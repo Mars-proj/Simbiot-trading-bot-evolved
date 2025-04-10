@@ -62,10 +62,10 @@ digraph TradingBotSystem {
     subgraph cluster_ml {
         label="Machine Learning";
         fillcolor=lightcyan;
-        ml_data_preparer [label="ml_data_preparer.py\n(Not Working)"];
-        ml_model_trainer [label="ml_model_trainer.py\n(Not Working)"];
-        ml_predictor [label="ml_predictor.py\n(Not Working)"];
-        online_learning [label="online_learning.py\n(Not Working)"];
+        ml_data_preparer [label="ml_data_preparer.py"];
+        ml_model_trainer [label="ml_model_trainer.py"];
+        ml_predictor [label="ml_predictor.py"];
+        online_learning [label="online_learning.py"];
         retraining_manager [label="retraining_manager.py"];
         local_model_api [label="local_model_api.py"];
         ml_predictor -> ml_model_trainer;

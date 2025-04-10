@@ -1,31 +1,25 @@
 import pandas as pd
 import numpy as np
-from features import extract_features, normalize_data
+from features import calculate_features
 
-def prepare_data(data, lookback=20):
-    """
-    Prepare data for ML model with feature extraction and normalization.
+def prepare_data(data: pd.DataFrame) -> pd.DataFrame:
+    """Prepare data for ML model: clean, extract features, normalize."""
+    # Remove NaNs
+    data = data.dropna()
 
-    Args:
-        data (pd.DataFrame): OHLCV data.
-        lookback (int): Lookback period for sequences (default: 20).
+    # Extract features (using features.py)
+    data = calculate_features(data)
 
-    Returns:
-        tuple: (X, y) - Features and target.
-    """
-    X, y = [], []
-    for i in range(lookback, len(data)):
-        window = data.iloc[i-lookback:i+1]
-        features = extract_features(window)
-        X.append(features)
-        y.append(1 if data['close'].iloc[i] > data['close'].iloc[i-1] else 0)
-    
-    X = np.array(X)
-    y = np.array(y)
-    
-    # Нормализация
-    X_df = pd.DataFrame(X)
-    X_normalized = normalize_data(X_df)
-    X = X_normalized.values
-    
-    return X, y
+    # Add more features: price change, volatility
+    data['price_change'] = data['price'].pct_change()
+    data['volatility'] = data['price'].rolling(window=20).std()
+
+    # Remove NaNs after feature extraction
+    data = data.dropna()
+
+    # Normalize numerical columns
+    numerical_cols = ['price', 'sma_20', 'rsi', 'price_change', 'volatility']
+    for col in numerical_cols:
+        data[col] = (data[col] - data[col].mean()) / data[col].std()
+
+    return data

@@ -1,34 +1,21 @@
-from river import linear_model, optim
+import pandas as pd
+import joblib
 
-class OnlineLearning:
-    """
-    Manage online learning for real-time model updates.
-    """
+def update_model(data: pd.DataFrame, model_id: int) -> None:
+    """Update the ML model with new data."""
+    # Load existing model
+    model_path = f"models/model_{model_id}.joblib"
+    model = joblib.load(model_path)
 
-    def __init__(self):
-        """
-        Initialize the online learning model.
-        """
-        self.model = linear_model.LogisticRegression(optimizer=optim.SGD(0.01))
+    # Prepare features and target
+    X = data[['sma_20', 'rsi', 'price_change', 'volatility']]
+    y = data['price'].shift(-1)
+    X = X[:-1]
+    y = y[:-1]
 
-    def update(self, x, y):
-        """
-        Update the model with new data.
+    # Update model with new data
+    model.fit(X, y)  # Incremental learning (RandomForest supports partial_fit indirectly)
 
-        Args:
-            x (dict): Feature dictionary.
-            y (int): Target value (1 for buy, 0 for sell).
-        """
-        self.model.learn_one(x, y)
-
-    def predict(self, x):
-        """
-        Predict a trading signal.
-
-        Args:
-            x (dict): Feature dictionary.
-
-        Returns:
-            str: Trading signal ('buy' or 'sell').
-        """
-        return "buy" if self.model.predict_one(x) > 0.5 else "sell"
+    # Save updated model
+    joblib.dump(model, model_path)
+    print(f"Model {model_id} updated with new data")
