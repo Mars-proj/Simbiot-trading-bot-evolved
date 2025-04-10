@@ -1,0 +1,43 @@
+# JSON-файлы с данными
+fetch_markets_data.json
+historical_data_cache.json
+coingecko_coins.json
+problematic_symbols.json
+working_symbols.json
+selected_pairs.json
+backtest_results.json
+
+# Логи
+*.log
+*.log.*
+logs/
+
+# Чувствительные данные
+.env
+config_keys.py
+
+# Временные файлы
+*.save
+*.save.*
+*.swp
+*.swo
+*.swn
+nohup.out
+
+# Виртуальное окружение и Python-кэш
+venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+*.egg
+
+# Тестовые файлы (если не хочешь публиковать)
+load_test.py
+test_retraining_manager.py
+
+# Другие
+main
+main.p
