@@ -1,40 +1,58 @@
-import asyncpg
-import logging
+import sqlite3
+from logging_setup import setup_logging
 
-logger = logging.getLogger(__name__)
+logger = setup_logging('user_manager')
 
 class UserManager:
     def __init__(self):
-        self.pool = None
+        self.db_path = "users.db"
+        self._init_db()
 
-    async def connect(self):
-        self.pool = await asyncpg.create_pool(
-            user='trading_user',
-            password='password',
-            database='trading_bot',
-            host='localhost'
-        )
-        logger.info("Connected to PostgreSQL database")
+    def _init_db(self):
+        """Initialize the SQLite database."""
+        with sqlite3.connect(self.db_path) as conn:
+            cursor = conn.cursor()
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS users (
+                    user_id TEXT PRIMARY KEY,
+                    password TEXT,
+                    symbols TEXT
+                )
+            ''')
+            # Add a default user for testing
+            cursor.execute('INSERT OR IGNORE INTO users (user_id, password, symbols) VALUES (?, ?, ?)',
+                           ('user1', 'password1', 'BTC/USDT,ETH/USDT'))
+            conn.commit()
 
-    async def add_user(self, user_id, api_key, api_secret):
-        async with self.pool.acquire() as connection:
-            await connection.execute(
-                """
-                INSERT INTO users (user_id, api_key, api_secret)
-                VALUES ($1, $2, $3)
-                ON CONFLICT (user_id) DO UPDATE
-                SET api_key = $2, api_secret = $3
-                """,
-                user_id, api_key, api_secret
-            )
-        logger.info(f"Added/Updated user {user_id}")
+    def authenticate_user(self, user_id: str, password: str) -> bool:
+        """Authenticate a user."""
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                cursor = conn.cursor()
+                cursor.execute('SELECT password FROM users WHERE user_id = ?', (user_id,))
+                result = cursor.fetchone()
+                if result and result[0] == password:
+                    logger.info(f"User {user_id} authenticated successfully")
+                    return True
+                logger.warning(f"Authentication failed for user {user_id}")
+                return False
+        except Exception as e:
+            logger.error(f"Authentication error for user {user_id}: {str(e)}")
+            raise
 
-    async def get_users(self):
-        async with self.pool.acquire() as connection:
-            rows = await connection.fetch("SELECT user_id, api_key, api_secret FROM users")
-        return {row['user_id']: {'api_key': row['api_key'], 'api_secret': row['api_secret']} for row in rows}
-
-    async def close(self):
-        if self.pool:
-            await self.pool.close()
-            logger.info("Closed PostgreSQL connection")
+    def get_user(self, user_id: str) -> dict:
+        """Get user settings."""
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                cursor = conn.cursor()
+                cursor.execute('SELECT symbols FROM users WHERE user_id = ?', (user_id,))
+                result = cursor.fetchone()
+                if result:
+                    symbols = result[0].split(',') if result[0] else []
+                    logger.info(f"Retrieved settings for user {user_id}: {symbols}")
+                    return {"symbols": symbols}
+                logger.warning(f"User {user_id} not found")
+                return {}
+        except Exception as e:
+            logger.error(f"Failed to get user {user_id}: {str(e)}")
+            raise

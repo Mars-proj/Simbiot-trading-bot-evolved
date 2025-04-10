@@ -111,13 +111,15 @@ digraph TradingBotSystem {
         api_server [label="api_server.py"];
         user_manager [label="user_manager.py"];
         notification_manager [label="notification_manager.py"];
-        telegram_notifier [label="telegram_notifier.py\n(Not Working)"];
+        telegram_notifier [label="telegram_notifier.py"];
         logging_setup [label="logging_setup.py"];
         notification_manager -> telegram_notifier;
         celery_app -> backtest_manager;
         celery_app -> retraining_manager;
+        celery_app -> core;
         api_server -> core;
         user_manager -> api_server;
+        core -> notification_manager;
     }
 
     // Utilities

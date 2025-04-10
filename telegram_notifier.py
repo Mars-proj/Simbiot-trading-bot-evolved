@@ -1,33 +1,30 @@
-import aiohttp
+import requests
+from dotenv import load_dotenv
+import os
+from logging_setup import setup_logging
 
-class TelegramNotifier:
-    """
-    Send notifications via Telegram.
-    """
+logger = setup_logging('telegram_notifier')
 
-    def __init__(self, bot_token, chat_id):
-        """
-        Initialize the Telegram notifier.
+def send_telegram_message(message: str):
+    """Send a message to Telegram."""
+    try:
+        # Load Telegram bot token and chat ID from .env
+        load_dotenv()
+        bot_token = os.getenv('TELEGRAM_BOT_TOKEN')
+        chat_id = os.getenv('TELEGRAM_CHAT_ID')
 
-        Args:
-            bot_token (str): Telegram bot token.
-            chat_id (str): Telegram chat ID.
-        """
-        self.bot_token = bot_token
-        self.chat_id = chat_id
-        self.url = f"https://api.telegram.org/bot{self.bot_token}/sendMessage"
+        if not bot_token or not chat_id:
+            logger.error("Telegram bot token or chat ID not found in .env")
+            raise ValueError("Telegram bot token or chat ID not found")
 
-    async def send_message(self, message):
-        """
-        Send a message via Telegram.
-
-        Args:
-            message (str): Message to send.
-
-        Returns:
-            dict: Response from Telegram API.
-        """
-        async with aiohttp.ClientSession() as session:
-            payload = {"chat_id": self.chat_id, "text": message}
-            async with session.post(self.url, json=payload) as response:
-                return await response.json()
+        url = f"https://api.telegram.org/bot{bot_token}/sendMessage"
+        payload = {
+            "chat_id": chat_id,
+            "text": message
+        }
+        response = requests.post(url, json=payload)
+        response.raise_for_status()
+        logger.info(f"Telegram message sent: {message}")
+    except Exception as e:
+        logger.error(f"Failed to send Telegram message: {str(e)}")
+        raise

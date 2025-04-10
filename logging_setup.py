@@ -1,19 +1,24 @@
 import logging
+import os
 
-# Configure the main logger for the application
-logging.basicConfig(
-    filename='app.log',
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-)
+def setup_logging(module_name: str):
+    """Set up logging for a module."""
+    log_dir = "logs"
+    os.makedirs(log_dir, exist_ok=True)
+    log_file = os.path.join(log_dir, f"{module_name}.log")
 
-# Main logger for the application
-logger_main = logging.getLogger(__name__)
+    logger = logging.getLogger(module_name)
+    logger.setLevel(logging.INFO)
 
-# Configure a separate logger for notifications
-notification_logger = logging.getLogger('notification')
-notification_handler = logging.StreamHandler()
-notification_handler.setLevel(logging.INFO)
-notification_formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-notification_handler.setFormatter(notification_formatter)
-notification_logger.addHandler(notification_handler)
+    # Create file handler
+    fh = logging.FileHandler(log_file)
+    fh.setLevel(logging.INFO)
+
+    # Create formatter
+    formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+    fh.setFormatter(formatter)
+
+    # Add handler to logger
+    logger.addHandler(fh)
+
+    return logger

@@ -1,14 +1,11 @@
 from exchange_factory import ExchangeFactory
 from strategy_manager import StrategyManager
 from data_utils import load_historical_data, preprocess_data
-import logging
+from notification_manager import notify
+from celery_app import trade_execution_task
+from logging_setup import setup_logging
 
-def setup_logging():
-    logging.basicConfig(
-        filename='core.log',
-        level=logging.INFO,
-        format='%(asctime)s - %(levelname)s - %(message)s'
-    )
+logger = setup_logging('core')
 
 class TradingBot:
     def __init__(self, exchange_id: str, symbols: list):
@@ -16,16 +13,16 @@ class TradingBot:
         self.strategy_manager = StrategyManager(exchange_id)
         self.symbols = symbols
         self.running = False
-        setup_logging()
 
     def start(self):
         self.running = True
-        logging.info("Trading bot started")
+        logger.info("Trading bot started")
+        notify("Trading bot started", channel="telegram")
         while self.running:
             try:
                 # Filter symbols
                 filtered_symbols = self.strategy_manager.filter_symbols(self.symbols)
-                logging.info(f"Filtered symbols: {filtered_symbols}")
+                logger.info(f"Filtered symbols: {filtered_symbols}")
 
                 for symbol in filtered_symbols:
                     # Load and preprocess data
@@ -34,22 +31,21 @@ class TradingBot:
 
                     # Generate signals
                     signals = self.strategy_manager.generate_signals(data)
-                    logging.info(f"Signals for {symbol}: {signals}")
+                    logger.info(f"Signals for {symbol}: {signals}")
 
-                    # Execute trades based on the first signal (simplified)
+                    # Execute trades asynchronously
                     for signal in signals:
-                        if signal == "buy":
-                            self.exchange.execute_trade({"symbol": symbol, "side": "buy", "amount": 0.001})
-                            logging.info(f"Executed buy trade for {symbol}")
-                        elif signal == "sell":
-                            self.exchange.execute_trade({"symbol": symbol, "side": "sell", "amount": 0.001})
-                            logging.info(f"Executed sell trade for {symbol}")
+                        if signal in ["buy", "sell"]:
+                            trade_execution_task.delay(symbol, signal, 0.001)
+                            logger.info(f"Scheduled {signal} trade for {symbol}")
             except Exception as e:
-                logging.error(f"Error in trading loop: {str(e)}")
+                logger.error(f"Error in trading loop: {str(e)}")
+                notify(f"Error in trading bot: {str(e)}", channel="telegram")
 
     def stop(self):
         self.running = False
-        logging.info("Trading bot stopped")
+        logger.info("Trading bot stopped")
+        notify("Trading bot stopped", channel="telegram")
 
     def get_status(self):
         return "running" if self.running else "stopped"
