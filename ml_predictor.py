@@ -1,16 +1,26 @@
 import pandas as pd
-import joblib
+import numpy as np
+from tensorflow.keras.models import load_model
+from logging_setup import setup_logging
+
+logger = setup_logging('ml_predictor')
 
 def predict(data: pd.DataFrame, model_id: int) -> float:
-    """Make a prediction using an ML model."""
-    # Load model
-    model_path = f"models/model_{model_id}.joblib"
-    model = joblib.load(model_path)
+    """Make a prediction using an LSTM model."""
+    try:
+        # Load model
+        model_path = f"models/model_{model_id}.h5"
+        model = load_model(model_path)
 
-    # Prepare features
-    X = data[['sma_20', 'rsi', 'price_change', 'volatility']]
-    X = X.iloc[-1:]  # Use the last row for prediction
+        # Prepare data
+        from ml_data_preparer import prepare_data
+        X, _ = prepare_data(data)
+        X = X[-1:]  # Use the last sequence for prediction
 
-    # Predict
-    prediction = model.predict(X)[0]
-    return float(prediction)
+        # Predict
+        prediction = model.predict(X, verbose=0)[0][0]
+        logger.info(f"Prediction made: {prediction}")
+        return float(prediction)
+    except Exception as e:
+        logger.error(f"Prediction failed: {str(e)}")
+        raise

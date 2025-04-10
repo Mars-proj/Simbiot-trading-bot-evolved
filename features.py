@@ -1,17 +1,11 @@
 import pandas as pd
 import numpy as np
-import logging
+from logging_setup import setup_logging
 
-def setup_logging():
-    logging.basicConfig(
-        filename='features.log',
-        level=logging.INFO,
-        format='%(asctime)s - %(levelname)s - %(message)s'
-    )
+logger = setup_logging('features')
 
 def calculate_features(data: pd.DataFrame) -> pd.DataFrame:
     """Calculate technical indicators as features."""
-    setup_logging()
     try:
         # SMA (Simple Moving Average)
         data['sma_20'] = data['price'].rolling(window=20).mean()
@@ -41,10 +35,26 @@ def calculate_features(data: pd.DataFrame) -> pd.DataFrame:
         data['price_z_score'] = (data['price'] - data['price'].rolling(window=20).mean()) / data['price'].rolling(window=20).std()
         data['is_anomaly'] = data['price_z_score'].abs() > 3
 
-        logging.info("Calculated features for data")
+        # Forecast volatility (using GARCH-like approach)
+        data['volatility'] = data['price'].pct_change().rolling(window=20).std()
+        data['forecasted_volatility'] = data['volatility'].ewm(span=10).mean()
+
+        logger.info("Calculated features for data")
         return data
     except Exception as e:
-        logging.error(f"Failed to calculate features: {str(e)}")
+        logger.error(f"Failed to calculate features: {str(e)}")
+        raise
+
+def compute_correlation(data_dict: dict) -> pd.DataFrame:
+    """Compute correlation between symbols."""
+    try:
+        # Create a DataFrame with prices for all symbols
+        prices = pd.DataFrame({symbol: df['price'] for symbol, df in data_dict.items()})
+        correlation = prices.corr()
+        logger.info(f"Computed correlation matrix: {correlation}")
+        return correlation
+    except Exception as e:
+        logger.error(f"Failed to compute correlation: {str(e)}")
         raise
 
 def compute_rsi(prices: pd.Series, period: int) -> pd.Series:

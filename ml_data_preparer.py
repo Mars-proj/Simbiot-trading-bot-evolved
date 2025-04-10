@@ -1,25 +1,41 @@
 import pandas as pd
 import numpy as np
 from features import calculate_features
+from logging_setup import setup_logging
 
-def prepare_data(data: pd.DataFrame) -> pd.DataFrame:
-    """Prepare data for ML model: clean, extract features, normalize."""
-    # Remove NaNs
-    data = data.dropna()
+logger = setup_logging('ml_data_preparer')
 
-    # Extract features (using features.py)
-    data = calculate_features(data)
+def prepare_data(data: pd.DataFrame, time_steps: int = 60) -> tuple:
+    """Prepare data for ML model: clean, extract features, normalize, create sequences for LSTM."""
+    try:
+        # Remove NaNs
+        data = data.dropna()
 
-    # Add more features: price change, volatility
-    data['price_change'] = data['price'].pct_change()
-    data['volatility'] = data['price'].rolling(window=20).std()
+        # Extract features (using features.py)
+        data = calculate_features(data)
 
-    # Remove NaNs after feature extraction
-    data = data.dropna()
+        # Add more features: price change, volatility
+        data['price_change'] = data['price'].pct_change()
+        data['volatility'] = data['price'].rolling(window=20).std()
 
-    # Normalize numerical columns
-    numerical_cols = ['price', 'sma_20', 'rsi', 'price_change', 'volatility']
-    for col in numerical_cols:
-        data[col] = (data[col] - data[col].mean()) / data[col].std()
+        # Remove NaNs after feature extraction
+        data = data.dropna()
 
-    return data
+        # Normalize numerical columns
+        numerical_cols = ['price', 'sma_20', 'rsi', 'price_change', 'volatility']
+        for col in numerical_cols:
+            data[col] = (data[col] - data[col].mean()) / data[col].std()
+
+        # Create sequences for LSTM
+        X, y = [], []
+        for i in range(len(data) - time_steps):
+            X.append(data[numerical_cols].iloc[i:i + time_steps].values)
+            y.append(data['price'].iloc[i + time_steps])
+        X = np.array(X)
+        y = np.array(y)
+
+        logger.info(f"Prepared {len(X)} sequences for LSTM training")
+        return X, y
+    except Exception as e:
+        logger.error(f"Failed to prepare data: {str(e)}")
+        raise

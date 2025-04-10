@@ -3,6 +3,7 @@ from strategy_manager import StrategyManager
 from data_utils import load_historical_data, preprocess_data
 from notification_manager import notify
 from celery_app import trade_execution_task
+from monitoring import PerformanceMonitor
 from logging_setup import setup_logging
 
 logger = setup_logging('core')
@@ -13,6 +14,7 @@ class TradingBot:
         self.strategy_manager = StrategyManager(exchange_id)
         self.symbols = symbols
         self.running = False
+        self.monitor = PerformanceMonitor({"cpu": 80, "memory": 80})
 
     def start(self):
         self.running = True
@@ -20,6 +22,9 @@ class TradingBot:
         notify("Trading bot started", channel="telegram")
         while self.running:
             try:
+                # Monitor performance
+                self.monitor.monitor()
+
                 # Filter symbols
                 filtered_symbols = self.strategy_manager.filter_symbols(self.symbols)
                 logger.info(f"Filtered symbols: {filtered_symbols}")
