@@ -18,8 +18,8 @@ digraph TradingBotSystem {
         fillcolor=lightyellow;
         strategies [label="strategies.py"];
         strategy_manager [label="strategy_manager.py"];
-        strategy_generator [label="strategy_generator.py\n(Not Working)"];
-        strategy_param_generator [label="strategy_param_generator.py\n(Not Working)"];
+        strategy_generator [label="strategy_generator.py"];
+        strategy_param_generator [label="strategy_param_generator.py"];
         order_utils [label="order_utils.py"];
         risk_manager [label="risk_manager.py"];
         signal_blacklist [label="signal_blacklist.py"];
@@ -80,8 +80,8 @@ digraph TradingBotSystem {
     subgraph cluster_optimization {
         label="Optimization";
         fillcolor=lightgoldenrodyellow;
-        genetic_optimizer [label="genetic_optimizer.py\n(Not Working)"];
-        strategy_optimizer [label="learning/strategy_optimizer.py\n(Not Working)"];
+        genetic_optimizer [label="genetic_optimizer.py"];
+        strategy_optimizer [label="learning/strategy_optimizer.py"];
         trade_evaluator [label="learning/trade_evaluator.py"];
         strategy_optimizer -> genetic_optimizer;
         trade_evaluator -> strategy_optimizer;

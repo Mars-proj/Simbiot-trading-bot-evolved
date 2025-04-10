@@ -1,84 +1,83 @@
-from deap import base, creator, tools, algorithms
 import random
-from backtest_cycle import run_backtest_cycle
-import ccxt.async_support as ccxt
-import asyncio
+from typing import List, Dict
+from strategies import Strategy
+from backtest_cycle import run_backtest
 
 class GeneticOptimizer:
-    """
-    Optimize parameters using genetic algorithms with backtesting.
-    """
+    def __init__(self, population_size: int, generations: int):
+        self.population_size = population_size
+        self.generations = generations
 
-    def __init__(self, exchange, symbol, timeframe, since, limit):
-        """
-        Initialize the genetic optimizer.
+    def optimize(self, strategy: Strategy, data: Dict) -> Dict:
+        """Optimize strategy parameters using a genetic algorithm."""
+        population = self._initialize_population()
+        for generation in range(self.generations):
+            population = self._evolve_population(population, strategy, data)
+            print(f"Generation {generation + 1}/{self.generations} completed")
+        return self._get_best_individual(population, strategy, data)
 
-        Args:
-            exchange: Exchange instance.
-            symbol (str): Trading symbol.
-            timeframe (str): Timeframe for OHLCV data.
-            since (int): Timestamp to fetch from (in milliseconds).
-            limit (int): Number of candles to fetch.
-        """
-        self.exchange = exchange
-        self.symbol = symbol
-        self.timeframe = timeframe
-        self.since = since
-        self.limit = limit
+    def _initialize_population(self) -> List[Dict]:
+        """Initialize a population of individuals with random parameters."""
+        population = []
+        for _ in range(self.population_size):
+            individual = {
+                "threshold": random.uniform(5000, 15000),  # Price threshold for signals
+                "stop_loss": random.uniform(0.01, 0.05),  # Stop-loss percentage
+                "take_profit": random.uniform(0.02, 0.10)  # Take-profit percentage
+            }
+            population.append(individual)
+        return population
 
-    async def evaluate(self, individual):
-        """
-        Evaluate the fitness of parameters using backtesting.
+    def _evaluate_individual(self, individual: Dict, strategy: Strategy, data: Dict) -> float:
+        """Evaluate an individual by running a backtest."""
+        strategy.params = individual
+        result = run_backtest(strategy, data)
+        return result["profit"]
 
-        Args:
-            individual (list): Parameters to evaluate (profit_target, stop_loss, trailing_percent).
+    def _evolve_population(self, population: List[Dict], strategy: Strategy, data: Dict) -> List[Dict]:
+        """Evolve the population: selection, crossover, mutation."""
+        # Evaluate fitness of each individual
+        fitness_scores = [(individual, self._evaluate_individual(individual, strategy, data)) for individual in population]
+        fitness_scores.sort(key=lambda x: x[1], reverse=True)  # Sort by profit (descending)
 
-        Returns:
-            tuple: Fitness value (final balance).
-        """
-        profit_target, stop_loss, trailing_percent = individual
-        result = await run_backtest_cycle(
-            self.exchange, self.symbol, self.timeframe, self.since, self.limit,
-            profit_target=profit_target, stop_loss=stop_loss
-        )
-        return (result['final_balance'],)
+        # Select top 50% for reproduction
+        elite_size = self.population_size // 2
+        elite = [individual for individual, _ in fitness_scores[:elite_size]]
 
-    async def optimize(self, generations=10, population_size=50):
-        """
-        Run genetic optimization.
+        # Create new population through crossover and mutation
+        new_population = elite.copy()
+        while len(new_population) < self.population_size:
+            parent1, parent2 = random.sample(elite, 2)
+            child = self._crossover(parent1, parent2)
+            child = self._mutate(child)
+            new_population.append(child)
 
-        Args:
-            generations (int): Number of generations (default: 10).
-            population_size (int): Population size (default: 50).
+        return new_population[:self.population_size]
 
-        Returns:
-            dict: Best parameters.
-        """
-        creator.create("FitnessMax", base.Fitness, weights=(1.0,))
-        creator.create("Individual", list, fitness=creator.FitnessMax)
+    def _crossover(self, parent1: Dict, parent2: Dict) -> Dict:
+        """Perform crossover between two parents."""
+        child = {}
+        for key in parent1:
+            child[key] = random.choice([parent1[key], parent2[key]])
+        return child
 
-        toolbox = base.Toolbox()
-        param_ranges = [(0.01, 0.1), (0.01, 0.05), (0.005, 0.02)]  # profit_target, stop_loss, trailing_percent
-        for i, (min_val, max_val) in enumerate(param_ranges):
-            toolbox.register(f"attr_float_{i}", random.uniform, min_val, max_val)
-        toolbox.register("individual", tools.initCycle, creator.Individual,
-                        [toolbox.__getattribute__(f"attr_float_{i}") for i in range(len(param_ranges))], n=1)
-        toolbox.register("population", tools.initRepeat, list, toolbox.individual)
-        toolbox.register("evaluate", self.evaluate)
-        toolbox.register("mate", tools.cxTwoPoint)
-        toolbox.register("mutate", tools.mutGaussian, mu=0, sigma=1, indpb=0.2)
-        toolbox.register("select", tools.selTournament, tournsize=3)
+    def _mutate(self, individual: Dict) -> Dict:
+        """Mutate an individual."""
+        mutation_rate = 0.1
+        mutated = individual.copy()
+        for key in mutated:
+            if random.random() < mutation_rate:
+                if key == "threshold":
+                    mutated[key] = random.uniform(5000, 15000)
+                elif key == "stop_loss":
+                    mutated[key] = random.uniform(0.01, 0.05)
+                elif key == "take_profit":
+                    mutated[key] = random.uniform(0.02, 0.10)
+        return mutated
 
-        population = toolbox.population(n=population_size)
-        for gen in range(generations):
-            offspring = algorithms.varAnd(population, toolbox, cxpb=0.5, mutpb=0.2)
-            fits = await asyncio.gather(*[toolbox.evaluate(ind) for ind in offspring])
-            for fit, ind in zip(fits, offspring):
-                ind.fitness.values = fit
-            population = toolbox.select(offspring, k=len(population))
-        best = tools.selBest(population, k=1)[0]
-        return {
-            "profit_target": best[0],
-            "stop_loss": best[1],
-            "trailing_percent": best[2]
-        }
+    def _get_best_individual(self, population: List[Dict], strategy: Strategy, data: Dict) -> Dict:
+        """Get the best individual based on fitness."""
+        fitness_scores = [(individual, self._evaluate_individual(individual, strategy, data)) for individual in population]
+        best_individual, best_fitness = max(fitness_scores, key=lambda x: x[1])
+        print(f"Best fitness: {best_fitness}")
+        return best_individual
