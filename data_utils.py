@@ -1,43 +1,42 @@
+import ccxt
 import pandas as pd
-from logging_setup import logger_main
+from exchange_factory import ExchangeFactory
+import logging
 
-def validate_data(data):
-    """Validates that the data is a non-empty DataFrame with required columns."""
+def setup_logging():
+    logging.basicConfig(
+        filename='data_utils.log',
+        level=logging.INFO,
+        format='%(asctime)s - %(levelname)s - %(message)s'
+    )
+
+def load_historical_data(exchange_id: str, symbol: str, timeframe: str, limit: int = 1000) -> pd.DataFrame:
+    """Load historical data for a symbol from an exchange."""
+    setup_logging()
     try:
-        if not isinstance(data, pd.DataFrame):
-            logger_main.error(f"Data must be a pandas DataFrame, got {type(data)}")
-            return False
-        if data.empty:
-            logger_main.error("DataFrame is empty")
-            return False
-        required_columns = ['timestamp', 'open', 'high', 'low', 'close', 'volume']
-        if not all(col in data.columns for col in required_columns):
-            missing = [col for col in required_columns if col not in data.columns]
-            logger_main.error(f"DataFrame missing required columns: {missing}")
-            return False
-        return True
-    except Exception as e:
-        logger_main.error(f"Error validating data: {e}")
-        return False
+        exchange = ExchangeFactory.create_exchange(exchange_id)
+        ohlcv = exchange.fetch_ohlcv(symbol, timeframe, limit=limit)
+        logging.info(f"Loaded {len(ohlcv)} candles for {symbol} from {exchange_id}")
 
-def normalize_data(data):
-    """Normalizes numerical columns in the DataFrame."""
+        # Convert to DataFrame
+        data = pd.DataFrame(ohlcv, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
+        data['timestamp'] = pd.to_datetime(data['timestamp'], unit='ms')
+        data['price'] = data['close']  # Use closing price as the main price
+        return data
+    except Exception as e:
+        logging.error(f"Failed to load data for {symbol} from {exchange_id}: {str(e)}")
+        raise
+
+def preprocess_data(data: pd.DataFrame) -> pd.DataFrame:
+    """Preprocess data for analysis."""
     try:
-        if not validate_data(data):
-            return None
-        numerical_columns = ['open', 'high', 'low', 'close', 'volume']
-        normalized_data = data.copy()
-        for col in numerical_columns:
-            col_min = data[col].min()
-            col_max = data[col].max()
-            if col_max != col_min:  # Avoid division by zero
-                normalized_data[col] = (data[col] - col_min) / (col_max - col_min)
-            else:
-                normalized_data[col] = 0  # If all values are the same, set to 0
-        logger_main.info("Data normalized successfully")
-        return normalized_data
-    except Exception as e:
-        logger_main.error(f"Error normalizing data: {e}")
-        return None
+        # Remove NaNs
+        data = data.dropna()
 
-__all__ = ['validate_data', 'normalize_data']
+        # Add basic transformations
+        data['returns'] = data['price'].pct_change()
+        data['log_returns'] = np.log(data['price'] / data['price'].shift(1))
+        return data
+    except Exception as e:
+        logging.error(f"Failed to preprocess data: {str(e)}")
+        raise

@@ -1,107 +1,56 @@
 import pandas as pd
 import numpy as np
-from sklearn.preprocessing import MinMaxScaler
+import logging
 
-def calculate_volatility(df, window=20):
-    """
-    Calculate the rolling volatility (standard deviation) of the closing price.
+def setup_logging():
+    logging.basicConfig(
+        filename='features.log',
+        level=logging.INFO,
+        format='%(asctime)s - %(levelname)s - %(message)s'
+    )
 
-    Args:
-        df: DataFrame with OHLCV data (columns: ['timestamp', 'open', 'high', 'low', 'close', 'volume']).
-        window: Rolling window size for volatility calculation (default: 20).
+def calculate_features(data: pd.DataFrame) -> pd.DataFrame:
+    """Calculate technical indicators as features."""
+    setup_logging()
+    try:
+        # SMA (Simple Moving Average)
+        data['sma_20'] = data['price'].rolling(window=20).mean()
+        data['sma_50'] = data['price'].rolling(window=50).mean()
 
-    Returns:
-        Series: Rolling volatility.
-    """
-    returns = df['close'].pct_change()
-    volatility = returns.rolling(window=window).std() * np.sqrt(window)
-    return volatility
+        # RSI (Relative Strength Index)
+        data['rsi'] = compute_rsi(data['price'], 14)
 
-def calculate_sma(df, window=20):
-    """
-    Calculate the Simple Moving Average (SMA) of the closing price.
+        # MACD (Moving Average Convergence Divergence)
+        exp1 = data['price'].ewm(span=12, adjust=False).mean()
+        exp2 = data['price'].ewm(span=26, adjust=False).mean()
+        data['macd'] = exp1 - exp2
+        data['macd_signal'] = data['macd'].ewm(span=9, adjust=False).mean()
+        data['macd_hist'] = data['macd'] - data['macd_signal']
 
-    Args:
-        df: DataFrame with OHLCV data (columns: ['timestamp', 'open', 'high', 'low', 'close', 'volume']).
-        window: Rolling window size for SMA calculation (default: 20).
+        # Bollinger Bands
+        data['bb_middle'] = data['price'].rolling(window=20).mean()
+        data['bb_std'] = data['price'].rolling(window=20).std()
+        data['bb_upper'] = data['bb_middle'] + 2 * data['bb_std']
+        data['bb_lower'] = data['bb_middle'] - 2 * data['bb_std']
 
-    Returns:
-        Series: SMA values.
-    """
-    return df['close'].rolling(window=window).mean()
+        # Volume features
+        data['volume_sma_20'] = data['volume'].rolling(window=20).mean()
+        data['volume_change'] = data['volume'].pct_change()
 
-def calculate_rsi(df, window=14):
-    """
-    Calculate the Relative Strength Index (RSI) of the closing price.
+        # Detect anomalies (price spikes)
+        data['price_z_score'] = (data['price'] - data['price'].rolling(window=20).mean()) / data['price'].rolling(window=20).std()
+        data['is_anomaly'] = data['price_z_score'].abs() > 3
 
-    Args:
-        df: DataFrame with OHLCV data (columns: ['timestamp', 'open', 'high', 'low', 'close', 'volume']).
-        window: Rolling window size for RSI calculation (default: 14).
+        logging.info("Calculated features for data")
+        return data
+    except Exception as e:
+        logging.error(f"Failed to calculate features: {str(e)}")
+        raise
 
-    Returns:
-        Series: RSI values.
-    """
-    delta = df['close'].diff()
-    gain = (delta.where(delta > 0, 0)).rolling(window=window).mean()
-    loss = (-delta.where(delta < 0, 0)).rolling(window=window).mean()
+def compute_rsi(prices: pd.Series, period: int) -> pd.Series:
+    """Compute RSI for a given period."""
+    delta = prices.diff()
+    gain = (delta.where(delta > 0, 0)).rolling(window=period).mean()
+    loss = (-delta.where(delta < 0, 0)).rolling(window=period).mean()
     rs = gain / loss
-    rsi = 100 - (100 / (1 + rs))
-    return rsi
-
-def extract_features(df):
-    """
-    Extract features from OHLCV data for machine learning.
-
-    Args:
-        df: DataFrame with OHLCV data (columns: ['timestamp', 'open', 'high', 'low', 'close', 'volume']).
-
-    Returns:
-        DataFrame: DataFrame with additional features.
-    """
-    df = df.copy()
-    
-    # Calculate basic features
-    df['returns'] = df['close'].pct_change()
-    df['volatility'] = calculate_volatility(df)
-    
-    # Moving averages
-    df['sma_20'] = calculate_sma(df, window=20)
-    df['sma_50'] = calculate_sma(df, window=50)
-    
-    # RSI
-    df['rsi'] = calculate_rsi(df)
-    
-    # MACD (Moving Average Convergence Divergence)
-    exp1 = df['close'].ewm(span=12, adjust=False).mean()
-    exp2 = df['close'].ewm(span=26, adjust=False).mean()
-    df['macd'] = exp1 - exp2
-    df['macd_signal'] = df['macd'].ewm(span=9, adjust=False).mean()
-    
-    # Drop NaN values
-    df = df.dropna()
-    return df
-
-def normalize_data(df, columns=None):
-    """
-    Normalize specified columns in the DataFrame using Min-Max Scaling.
-
-    Args:
-        df: DataFrame with data to normalize.
-        columns: List of column names to normalize. If None, all numeric columns are normalized.
-
-    Returns:
-        DataFrame: DataFrame with normalized columns.
-    """
-    df = df.copy()
-    
-    # If columns are not specified, select all numeric columns
-    if columns is None:
-        columns = df.select_dtypes(include=[np.number]).columns.tolist()
-    
-    # Initialize the scaler
-    scaler = MinMaxScaler()
-    
-    # Normalize the specified columns
-    df[columns] = scaler.fit_transform(df[columns])
-    
-    return df
+    return 100 - (100 / (1 + rs))

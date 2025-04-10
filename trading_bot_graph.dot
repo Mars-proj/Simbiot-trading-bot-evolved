@@ -39,7 +39,7 @@ digraph TradingBotSystem {
         exchange_factory [label="exchange_factory.py"];
         exchange_detector [label="exchange_detector.py"];
         exchange_pool [label="exchange_pool.py"];
-        symbol_filter [label="symbol_filter.py\n(Not Working)"];
+        symbol_filter [label="symbol_filter.py"];
         exchange_pool -> exchange_factory;
         exchange_pool -> exchange_detector;
         exchange_pool -> symbol_filter;
@@ -56,6 +56,7 @@ digraph TradingBotSystem {
         market_state_analyzer -> features;
         market_state_analyzer -> data_utils;
         strategy_manager -> market_state_analyzer;
+        strategy_manager -> symbol_filter;
     }
 
     // Machine Learning

@@ -1,83 +1,51 @@
-# symbol_filter.py
+from typing import List
+import ccxt
+from exchange_factory import ExchangeFactory
+import pandas as pd
 import logging
-import asyncio
-import redis.asyncio as redis
-import json
-import time
 
-logger = logging.getLogger("main")
+def setup_logging():
+    logging.basicConfig(
+        filename='symbol_filter.log',
+        level=logging.INFO,
+        format='%(asctime)s - %(levelname)s - %(message)s'
+    )
 
-async def get_redis_client():
-    """Инициализация Redis клиента."""
-    return await redis.from_url("redis://localhost:6379/0")
-
-async def filter_symbols(exchange, symbols, since, limit, timeframe, user=None, market_state=None, batch_size=500):
-    """Фильтрует символы, оставляя только пары с USDT и достаточным объёмом торгов, по батчам."""
-    redis_client = await get_redis_client()
+def filter_symbols(exchange_id: str, symbols: List[str], min_volume: float, min_liquidity: float, max_volatility: float) -> List[str]:
+    """Filter symbols based on volume, liquidity, and volatility."""
+    setup_logging()
     try:
-        valid_symbols = []
-        problematic_symbols = []
-        # Проверяем кэш в Redis
-        valid_symbols_key = f"valid_symbols:{user or 'unknown'}"
-        problematic_symbols_key = f"problematic_symbols:{user or 'unknown'}"
-        cached_valid = await redis_client.get(valid_symbols_key)
-        cached_problematic = await redis_client.get(problematic_symbols_key)
+        exchange = ExchangeFactory.create_exchange(exchange_id)
+        filtered_symbols = []
 
-        if cached_valid and cached_problematic:
-            valid_symbols = json.loads(cached_valid.decode())
-            problematic_symbols = json.loads(cached_problematic.decode())
-            logger.info(f"Loaded {len(valid_symbols)} valid symbols and {len(problematic_symbols)} problematic symbols from Redis cache")
-            return valid_symbols
+        for symbol in symbols:
+            try:
+                # Fetch ticker data
+                ticker = exchange.fetch_ticker(symbol)
+                volume = ticker['baseVolume'] if 'baseVolume' in ticker else 0.0
 
-        # Фильтруем символы, которые ещё не в кэше
-        symbols_to_filter = [s for s in symbols if s not in problematic_symbols]
-        for i in range(0, len(symbols_to_filter), batch_size):
-            batch = symbols_to_filter[i:i + batch_size]
-            for symbol in batch:
-                if not symbol.endswith('/USDT'):
-                    problematic_symbols.append(symbol)
-                    continue
-                try:
-                    # Проверяем, поддерживается ли символ API
-                    await exchange.fetch_ticker(symbol)
-                except Exception as e:
-                    logger.error(f"Symbol {symbol} not supported by API: {type(e).__name__}: {str(e)}")
-                    problematic_symbols.append(symbol)
-                    continue
-                try:
-                    ohlcv = await exchange.fetch_ohlcv(symbol, timeframe, since=since, limit=limit)
-                    logger.debug(f"Fetched {len(ohlcv)} candles for {symbol}")
-                    if len(ohlcv) < limit:
-                        logger.warning(f"Skipping {symbol}: insufficient data (only {len(ohlcv)} candles)")
-                        problematic_symbols.append(symbol)
-                        continue
-                    volume = sum(candle[5] for candle in ohlcv)
-                    if volume == 0:
-                        logger.warning(f"Skipping {symbol}: zero trading volume")
-                        problematic_symbols.append(symbol)
-                        continue
-                    valid_symbols.append(symbol)
-                except Exception as e:
-                    if "429" in str(e):
-                        logger.warning(f"Rate limit exceeded for {symbol}, pausing for 5 seconds...")
-                        await asyncio.sleep(5)
-                        continue
-                    logger.error(f"Failed to fetch OHLCV for {symbol}: {type(e).__name__}: {str(e)}")
-                    problematic_symbols.append(symbol)
-                    continue
-                # Добавляем задержку 0.5 секунды между запросами
-                await asyncio.sleep(0.5)
-            logger.info(f"Processed batch {i//batch_size + 1} of {len(symbols_to_filter)//batch_size + 1}, found {len(valid_symbols)} valid symbols so far")
+                # Fetch order book for liquidity
+                order_book = exchange.fetch_order_book(symbol, limit=10)
+                bid_ask_spread = (order_book['asks'][0][0] - order_book['bids'][0][0]) / order_book['bids'][0][0] if order_book['bids'] and order_book['asks'] else float('inf')
 
-        # Сохраняем результаты в Redis
-        await redis_client.set(valid_symbols_key, json.dumps(valid_symbols), ex=86400)  # Кэшируем на 24 часа
-        await redis_client.set(problematic_symbols_key, json.dumps(problematic_symbols), ex=86400)
-        logger.info(f"Cached {len(valid_symbols)} valid symbols and {len(problematic_symbols)} problematic symbols in Redis")
+                # Fetch historical data for volatility
+                ohlcv = exchange.fetch_ohlcv(symbol, '1h', limit=100)
+                df = pd.DataFrame(ohlcv, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
+                volatility = df['close'].pct_change().std()
 
-        logger.info(f"Filtered {len(valid_symbols)} valid symbols for user {user or 'unknown'} in {market_state or 'unknown'} market state")
-        return valid_symbols
+                # Apply filters
+                if (volume >= min_volume and 
+                    bid_ask_spread <= min_liquidity and 
+                    volatility <= max_volatility):
+                    filtered_symbols.append(symbol)
+                    logging.info(f"Symbol {symbol} passed filters: volume={volume}, spread={bid_ask_spread}, volatility={volatility}")
+                else:
+                    logging.info(f"Symbol {symbol} filtered out: volume={volume}, spread={bid_ask_spread}, volatility={volatility}")
+            except Exception as e:
+                logging.warning(f"Failed to fetch data for {symbol}: {str(e)}")
+                continue
+
+        return filtered_symbols
     except Exception as e:
-        logger.error(f"Failed to filter symbols: {type(e).__name__}: {str(e)}")
-        return []
-    finally:
-        await redis_client.close()
+        logging.error(f"Failed to filter symbols: {str(e)}")
+        raise

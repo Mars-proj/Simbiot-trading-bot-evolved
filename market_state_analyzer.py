@@ -1,80 +1,51 @@
-import logging
 import pandas as pd
-import redis.asyncio as redis
-import json
 import numpy as np
+import logging
 
-logger = logging.getLogger("main")
+def setup_logging():
+    logging.basicConfig(
+        filename='market_state_analyzer.log',
+        level=logging.INFO,
+        format='%(asctime)s - %(levelname)s - %(message)s'
+    )
 
-async def get_redis_client():
-    return await redis.from_url("redis://localhost:6379/0")
-
-async def analyze_market_state(exchange, symbol, timeframe='1h', limit=100):
-    """
-    Analyze market state based on multiple indicators with Redis caching.
-
-    Args:
-        exchange: Exchange instance (e.g., ccxt.async_support.mexc).
-        symbol: Symbol to analyze (e.g., 'BTC/USDT').
-        timeframe: Timeframe for OHLCV data (default: '1h').
-        limit: Number of OHLCV candles to fetch (default: 100).
-
-    Returns:
-        dict: Market state with indicators.
-    """
-    cache_key = f"market_state:{symbol}:{timeframe}"
-    redis_client = await get_redis_client()
+def analyze_market_state(data: pd.DataFrame) -> dict:
+    """Analyze the current market state."""
+    setup_logging()
     try:
-        cached_state = await redis_client.get(cache_key)
-        if cached_state:
-            return json.loads(cached_state.decode())
-    except Exception as e:
-        logger.error(f"Failed to check cache for market state: {type(e).__name__}: {str(e)}")
-    finally:
-        await redis_client.close()
+        # Volatility
+        volatility = data['price'].pct_change().std()
 
-    try:
-        ohlcv = await exchange.fetch_ohlcv(symbol, timeframe, limit=limit)
-        df = pd.DataFrame(ohlcv, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
-        
-        # SMA
-        df['sma_20'] = df['close'].rolling(window=20).mean()
-        trend = "bullish" if df['close'].iloc[-1] > df['sma_20'].iloc[-1] else "bearish"
+        # Trend (using SMA crossover)
+        trend = 'up' if data['sma_20'].iloc[-1] > data['sma_50'].iloc[-1] else 'down'
 
-        # MACD
-        exp1 = df['close'].ewm(span=12, adjust=False).mean()
-        exp2 = df['close'].ewm(span=26, adjust=False).mean()
-        macd = exp1 - exp2
-        signal_line = macd.ewm(span=9, adjust=False).mean()
-        macd_trend = "bullish" if macd.iloc[-1] > signal_line.iloc[-1] else "bearish"
+        # Volume trend
+        volume_trend = 'increasing' if data['volume_change'].iloc[-1] > 0 else 'decreasing'
 
-        # Bollinger Bands
-        df['sma_20'] = df['close'].rolling(window=20).mean()
-        df['std_20'] = df['close'].rolling(window=20).std()
-        df['upper_band'] = df['sma_20'] + (df['std_20'] * 2)
-        df['lower_band'] = df['sma_20'] - (df['std_20'] * 2)
-        bb_position = "overbought" if df['close'].iloc[-1] > df['upper_band'].iloc[-1] else "oversold" if df['close'].iloc[-1] < df['lower_band'].iloc[-1] else "neutral"
+        # MACD trend
+        macd_trend = 'bullish' if data['macd'].iloc[-1] > data['macd_signal'].iloc[-1] else 'bearish'
 
-        state = {
+        # Bollinger Bands position
+        if data['price'].iloc[-1] > data['bb_upper'].iloc[-1]:
+            bb_position = 'overbought'
+        elif data['price'].iloc[-1] < data['bb_lower'].iloc[-1]:
+            bb_position = 'oversold'
+        else:
+            bb_position = 'neutral'
+
+        # Anomalies
+        has_anomaly = data['is_anomaly'].iloc[-1]
+
+        market_state = {
+            "volatility": volatility,
             "trend": trend,
+            "volume_trend": volume_trend,
             "macd_trend": macd_trend,
             "bb_position": bb_position,
-            "macd": macd.iloc[-1],
-            "signal_line": signal_line.iloc[-1],
-            "upper_band": df['upper_band'].iloc[-1],
-            "lower_band": df['lower_band'].iloc[-1]
+            "has_anomaly": has_anomaly
         }
-
-        # Сохраняем в кэш
-        redis_client = await get_redis_client()
-        try:
-            await redis_client.set(cache_key, json.dumps(state), ex=3600)  # Кэшируем на 1 час
-        except Exception as e:
-            logger.error(f"Failed to cache market state: {type(e).__name__}: {str(e)}")
-        finally:
-            await redis_client.close()
-
-        return state
+        logging.info(f"Market state: {market_state}")
+        return market_state
     except Exception as e:
-        logger.error(f"Failed to analyze market state for {symbol}: {type(e).__name__}: {str(e)}")
-        return {"trend": "unknown", "macd_trend": "unknown", "bb_position": "unknown"}
+        logging.error(f"Failed to analyze market state: {str(e)}")
+        raise
