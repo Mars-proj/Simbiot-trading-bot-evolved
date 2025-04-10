@@ -57,6 +57,7 @@ digraph TradingBotSystem {
         market_state_analyzer -> data_utils;
         strategy_manager -> market_state_analyzer;
         strategy_manager -> symbol_filter;
+        strategies -> market_state_analyzer;
     }
 
     // Machine Learning
@@ -95,7 +96,7 @@ digraph TradingBotSystem {
         fillcolor=lightgray;
         backtest_cycle [label="backtest_cycle.py"];
         backtest_manager [label="backtest_manager.py"];
-        learning_backtester [label="learning/backtester.py\n(Not Working)"];
+        learning_backtester [label="learning/backtester.py"];
         ab_testing [label="ab_testing.py"];
         backtest_manager -> backtest_cycle;
         learning_backtester -> backtest_cycle;

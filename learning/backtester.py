@@ -1,20 +1,33 @@
-# backtester.py
-import logging
+from typing import Dict
+from strategies import Strategy
+from learning.trade_evaluator import evaluate_trades
+from logging_setup import setup_logging
 
-logger = logging.getLogger("main")
+logger = setup_logging('learning_backtester')
 
-async def backtest_strategy(historical_data, signals):
-    """Бэктестит стратегию на исторических данных."""
-    profit = 0
-    position = None
-    for i in range(len(historical_data)):
-        signal = signals[i]
-        price = historical_data[i]['close']
+def backtest(strategy: Strategy, data: dict) -> dict:
+    """Run a backtest in the learning module with detailed analytics."""
+    try:
+        trades = []
+        balance = 10000  # Starting balance
+        position = None
 
-        if signal == "buy" and position is None:
-            position = price  # Открываем позицию (покупка)
-        elif signal == "sell" and position is not None:
-            profit += (price - position)  # Закрываем позицию (продажа)
-            position = None
+        for timestamp, price in data.items():
+            signal = strategy.generate_signal(price, pd.DataFrame(data))
+            if signal == "buy" and position is None:
+                position = {"buy_price": price, "timestamp": timestamp}
+                trades.append({"type": "buy", "price": price, "timestamp": timestamp})
+            elif signal == "sell" and position:
+                profit = price - position["buy_price"]
+                balance += profit
+                trades.append({"type": "sell", "price": price, "timestamp": timestamp, "profit": profit})
+                position = None
 
-    return profit
+        # Evaluate trades
+        evaluation = evaluate_trades(trades)
+        evaluation["final_balance"] = balance
+        logger.info(f"Backtest completed: {evaluation}")
+        return evaluation
+    except Exception as e:
+        logger.error(f"Backtest failed: {str(e)}")
+        raise
