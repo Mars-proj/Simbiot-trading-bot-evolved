@@ -1,50 +1,26 @@
-from logging_setup import logger_main
-from symbol_handler import validate_symbol
+from trading_bot.logging_setup import setup_logging
 
-async def create_order(exchange, symbol, side, amount, price=None, order_type='limit'):
-    """Creates an order on the exchange."""
-    try:
-        if not await validate_symbol(exchange.id, exchange.user_id, symbol, testnet=exchange.testnet):
-            logger_main.error(f"Invalid symbol: {symbol}")
-            return None
-        if side not in ['buy', 'sell']:
-            logger_main.error(f"Invalid side: {side}")
-            return None
-        if amount <= 0:
-            logger_main.error(f"Invalid amount: {amount}")
-            return None
-        if order_type not in ['market', 'limit']:
-            logger_main.error(f"Invalid order type: {order_type}")
-            return None
-        if order_type == 'limit' and (price is None or price <= 0):
-            logger_main.error(f"Invalid price for limit order: {price}")
-            return None
+logger = setup_logging('order_utils')
 
-        # Create order
-        if order_type == 'limit':
-            order = await exchange.create_limit_order(symbol, side, amount, price)
-        else:
-            order = await exchange.create_market_order(symbol, side, amount)
+class OrderUtils:
+    def __init__(self, market_state: dict):
+        self.volatility = market_state['volatility']
 
-        order_id = order.get('id', 'N/A')
-        logger_main.info(f"Created {order_type} {side} order for {symbol} on {exchange.id}: amount={amount}, price={price}, order_id={order_id}")
-        return order
-    except Exception as e:
-        logger_main.error(f"Error creating order for {symbol} on {exchange.id}: {e}")
-        return None
+    def calculate_commission(self, quantity: float, price: float, commission_rate: float = 0.001) -> float:
+        """Calculate commission for an order."""
+        try:
+            # Динамическая корректировка комиссии на основе волатильности
+            adjusted_rate = commission_rate * (1 + self.volatility / 2)
+            commission = quantity * price * adjusted_rate
+            logger.info(f"Calculated commission: {commission} (rate: {adjusted_rate})")
+            return commission
+        except Exception as e:
+            logger.error(f"Failed to calculate commission: {str(e)}")
+            raise
 
-async def cancel_order(exchange, symbol, order_id):
-    """Cancels an order on the exchange."""
-    try:
-        if not await validate_symbol(exchange.id, exchange.user_id, symbol, testnet=exchange.testnet):
-            logger_main.error(f"Invalid symbol: {symbol}")
-            return False
-
-        await exchange.cancel_order(order_id, symbol)
-        logger_main.info(f"Cancelled order {order_id} for {symbol} on {exchange.id}")
-        return True
-    except Exception as e:
-        logger_main.error(f"Error cancelling order {order_id} for {symbol} on {exchange.id}: {e}")
-        return False
-
-__all__ = ['create_order', 'cancel_order']
+if __name__ == "__main__":
+    # Test run
+    market_state = {'volatility': 0.3}
+    utils = OrderUtils(market_state)
+    commission = utils.calculate_commission(0.1, 50000)
+    print(f"Commission: {commission}")
