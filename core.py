@@ -26,7 +26,7 @@ class TradingBot:
                 self.monitor.monitor()
 
                 # Filter symbols
-                filtered_symbols = self.strategy_manager.filter_symbols(self.symbols)
+                filtered_symbols = self.strategy_manager.filter_symbols(self.symbols, self.exchange)
                 logger.info(f"Filtered symbols: {filtered_symbols}")
 
                 for symbol in filtered_symbols:

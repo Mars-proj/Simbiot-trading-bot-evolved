@@ -39,10 +39,10 @@ class StrategyManager:
             logger.error(f"Failed to generate/optimize strategy: {str(e)}")
             raise
 
-    def filter_symbols(self, symbols: List[str]) -> List[str]:
+    def filter_symbols(self, symbols: List[str], exchange: object) -> List[str]:
         """Filter symbols based on market conditions."""
         try:
-            filtered = filter_symbols(self.exchange_id, symbols, min_volume=1000, min_liquidity=0.01, max_volatility=0.05)
+            filtered = filter_symbols(exchange, symbols, min_volume=1000, min_liquidity=0.01, max_volatility=0.05)
             logger.info(f"Filtered symbols: {filtered}")
             return filtered
         except Exception as e:
