@@ -1,33 +1,40 @@
-import numpy as np
 
-def evaluate_trades(trades: list) -> dict:
-    """Evaluate trades and calculate metrics."""
-    if not trades:
-        return {"profit": 0.0, "max_drawdown": 0.0, "sharpe_ratio": 0.0}
+from trading_bot.logging_setup import setup_logging
 
-    # Calculate total profit
-    profits = [t['profit'] for t in trades if 'profit' in t]
-    total_profit = sum(profits)
+logger = setup_logging('trade_evaluator')
 
-    # Calculate returns for Sharpe ratio
-    returns = np.array(profits)
-    mean_return = np.mean(returns)
-    std_return = np.std(returns) if len(returns) > 1 else 0.0
-    sharpe_ratio = mean_return / std_return if std_return != 0 else 0.0
+class TradeEvaluator:
+    def __init__(self, market_state: dict):
+        self.volatility = market_state['volatility']
 
-    # Calculate maximum drawdown
-    balance = 10000  # Starting balance
-    peak = balance
-    max_drawdown = 0.0
-    for trade in trades:
-        if 'profit' in trade:
-            balance += trade['profit']
-            peak = max(peak, balance)
-            drawdown = (peak - balance) / peak if peak != 0 else 0.0
-            max_drawdown = max(max_drawdown, drawdown)
+    def evaluate_trade(self, trade: dict) -> dict:
+        """Evaluate the performance of a trade."""
+        try:
+            if 'profit' not in trade:
+                logger.warning("Trade does not contain profit information")
+                return {'status': 'failed', 'reason': 'no profit data'}
 
-    return {
-        "profit": total_profit,
-        "max_drawdown": max_drawdown,
-        "sharpe_ratio": sharpe_ratio
+            # Динамическая корректировка оценки на основе волатильности
+            risk_adjusted_profit = trade['profit'] * (1 - self.volatility / 2)
+            
+            evaluation = {
+                'profit': trade['profit'],
+                'risk_adjusted_profit': risk_adjusted_profit,
+                'success': trade['profit'] > 0
+            }
+            logger.info(f"Trade evaluation: {evaluation}")
+            return evaluation
+        except Exception as e:
+            logger.error(f"Failed to evaluate trade: {str(e)}")
+            raise
+
+if __name__ == "__main__":
+    # Test run
+    market_state = {'volatility': 0.3}
+    evaluator = TradeEvaluator(market_state)
+    trade = {
+        'symbol': 'BTC/USDT',
+        'profit': 500
     }
+    evaluation = evaluator.evaluate_trade(trade)
+    print(f"Evaluation: {evaluation}")
