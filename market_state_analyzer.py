@@ -6,7 +6,7 @@ from logging_setup import setup_logging
 
 logger = setup_logging('market_state_analyzer')
 
-def analyze_market_state(data: pd.DataFrame, exchange_id: str = 'binance', symbol: str = 'BTC/USDT', symbols_data: dict = None) -> dict:
+def analyze_market_state(data: pd.DataFrame, exchange: object, symbol: str = 'BTC/USDT', symbols_data: dict = None) -> dict:
     """Analyze the current market state."""
     try:
         # Volatility
@@ -34,7 +34,7 @@ def analyze_market_state(data: pd.DataFrame, exchange_id: str = 'binance', symbo
         has_anomaly = data['is_anomaly'].iloc[-1]
 
         # Order book analysis (depth of market)
-        order_book = load_order_book(exchange_id, symbol)
+        order_book = load_order_book(exchange, symbol)
         buy_pressure = sum([bid[1] for bid in order_book['bids']])
         sell_pressure = sum([ask[1] for ask in order_book['asks']])
         order_book_imbalance = (buy_pressure - sell_pressure) / (buy_pressure + sell_pressure) if (buy_pressure + sell_pressure) != 0 else 0

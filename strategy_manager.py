@@ -49,7 +49,7 @@ class StrategyManager:
             logger.error(f"Failed to filter symbols: {str(e)}")
             raise
 
-    def generate_signals(self, data: pd.DataFrame) -> List[str]:
+    def generate_signals(self, data: pd.DataFrame, exchange: object) -> List[str]:
         """Generate trading signals using strategies, ML predictions, and market analysis."""
         try:
             # Use ML prediction to adjust strategy
@@ -57,7 +57,7 @@ class StrategyManager:
             logger.info(f"Predicted price: {predicted_price}")
 
             # Analyze market state
-            market_state = analyze_market_state(data)
+            market_state = analyze_market_state(data, exchange)
             logger.info(f"Market state: {market_state}")
 
             signals = []

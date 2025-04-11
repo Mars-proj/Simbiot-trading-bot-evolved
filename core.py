@@ -9,17 +9,17 @@ from logging_setup import setup_logging
 logger = setup_logging('core')
 
 class TradingBot:
-    def __init__(self, exchange_id: str, symbols: list):
-        self.exchange = ExchangeFactory.create_exchange(exchange_id)
-        self.strategy_manager = StrategyManager(exchange_id)
+    def __init__(self, api_key: str, api_secret: str, symbols: list):
+        self.exchange, self.exchange_id = ExchangeFactory.create_exchange(api_key, api_secret)
+        self.strategy_manager = StrategyManager(self.exchange_id)
         self.symbols = symbols
         self.running = False
         self.monitor = PerformanceMonitor({"cpu": 80, "memory": 80})
 
     def start(self):
         self.running = True
-        logger.info("Trading bot started")
-        notify("Trading bot started", channel="telegram")
+        logger.info(f"Trading bot started on {self.exchange_id}")
+        notify(f"Trading bot started on {self.exchange_id}", channel="telegram")
         while self.running:
             try:
                 # Monitor performance
@@ -31,11 +31,11 @@ class TradingBot:
 
                 for symbol in filtered_symbols:
                     # Load and preprocess data
-                    data = load_historical_data(self.exchange.id, symbol, '1h', limit=100)
+                    data = load_historical_data(self.exchange, symbol, '1h', limit=100)
                     data = preprocess_data(data)
 
                     # Generate signals
-                    signals = self.strategy_manager.generate_signals(data)
+                    signals = self.strategy_manager.generate_signals(data, self.exchange)
                     logger.info(f"Signals for {symbol}: {signals}")
 
                     # Execute trades asynchronously
