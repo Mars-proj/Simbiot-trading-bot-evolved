@@ -1,34 +1,50 @@
-from typing import Dict
-from market_state_analyzer import analyze_market_state
 import pandas as pd
 from logging_setup import setup_logging
 
 logger = setup_logging('risk_manager')
 
 class RiskManager:
-    def __init__(self, base_max_loss: float):
-        self.base_max_loss = base_max_loss
-        self.current_loss = 0.0
-
-    def check_risk(self, trade: Dict, market_data: pd.DataFrame) -> bool:
-        """Check if a trade exceeds risk limits, adjusting dynamically."""
+    def __init__(self, exchange: object, market_state: dict):
+        # Dynamic max loss based on market state and balance
         try:
-            # Analyze market state to adjust risk limits
-            market_state = analyze_market_state(market_data)
+            balance = exchange.fetch_balance()
+            usdt_balance = balance['free'].get('USDT', 0.0)
             volatility = market_state['volatility']
-
-            # Adjust max loss based on volatility
-            max_loss = self.base_max_loss * (1 + volatility)  # Increase risk tolerance in volatile markets
-            if market_state['trend'] == 'down':
-                max_loss *= 0.8  # Reduce risk in downtrend
-
-            # Calculate potential loss
-            potential_loss = trade['amount'] * trade['price'] * 0.01  # 1% potential loss
-            self.current_loss += potential_loss
-
-            can_trade = self.current_loss <= max_loss
-            logger.info(f"Risk check: current_loss={self.current_loss}, max_loss={max_loss}, can_trade={can_trade}")
-            return can_trade
+            # Lower max loss in high volatility markets
+            volatility_factor = max(0.1, min(1.0, 1.0 / (volatility + 0.01)))
+            self.max_loss = usdt_balance * 0.05 * volatility_factor  # 5% of balance, scaled by volatility
+            self.current_loss = 0.0
+            logger.info(f"Initialized RiskManager with dynamic max_loss: {self.max_loss}")
         except Exception as e:
-            logger.error(f"Risk check failed: {str(e)}")
+            logger.error(f"Failed to initialize RiskManager: {str(e)}")
+            raise
+
+    def check_risk(self, trade: dict, market_data: pd.DataFrame) -> bool:
+        """Check if a trade is within risk limits."""
+        try:
+            # Calculate trade value
+            trade_value = trade['price'] * trade['amount']
+
+            # Simple VaR calculation (Value at Risk)
+            volatility = market_data['price'].pct_change().std()
+            var_95 = trade_value * 1.65 * volatility  # 95% confidence level
+            potential_loss = trade_value + var_95
+
+            if self.current_loss + potential_loss > self.max_loss:
+                logger.warning(f"Trade rejected: exceeds max loss limit. Current loss: {self.current_loss}, Potential loss: {potential_loss}")
+                return False
+            return True
+        except Exception as e:
+            logger.error(f"Failed to check risk: {str(e)}")
+            raise
+
+    def update_loss(self, trade_result: float):
+        """Update the current loss based on trade result."""
+        try:
+            self.current_loss += trade_result
+            if self.current_loss < 0:
+                self.current_loss = 0.0  # Reset if profit
+            logger.info(f"Updated current loss: {self.current_loss}")
+        except Exception as e:
+            logger.error(f"Failed to update loss: {str(e)}")
             raise

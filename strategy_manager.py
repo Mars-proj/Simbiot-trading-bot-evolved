@@ -15,7 +15,7 @@ class StrategyManager:
     def __init__(self, exchange_id: str):
         self.strategies = []
         self.exchange_id = exchange_id
-        self.risk_manager = RiskManager(base_max_loss=1000.0)  # Base max loss in USD
+        self.risk_manager = RiskManager(base_max_loss=1000.0)  # Will be made dynamic in risk_manager.py
 
     def add_strategy(self, strategy: Strategy):
         self.strategies.append(strategy)
@@ -39,10 +39,23 @@ class StrategyManager:
             logger.error(f"Failed to generate/optimize strategy: {str(e)}")
             raise
 
-    def filter_symbols(self, symbols: List[str], exchange: object) -> List[str]:
-        """Filter symbols based on market conditions."""
+    def filter_symbols(self, symbols: List[str], exchange: object, market_state: dict) -> List[str]:
+        """Filter symbols based on market conditions with dynamic parameters."""
         try:
-            filtered = filter_symbols(exchange, symbols, min_volume=1000, min_liquidity=0.01, max_volatility=0.05)
+            # Dynamic parameters based on market state
+            volatility = market_state['volatility']
+            order_book_imbalance = market_state['order_book_imbalance']
+
+            # Adjust min_volume based on volatility (higher volatility -> higher volume requirement)
+            min_volume = 500.0 * (1 + volatility)
+
+            # Adjust min_liquidity based on order book imbalance (higher imbalance -> stricter liquidity)
+            min_liquidity = 0.01 * (1 + abs(order_book_imbalance))
+
+            # Adjust max_volatility based on market state (allow higher volatility if market is trending)
+            max_volatility = 0.05 if market_state['trend'] == 'up' else 0.03
+
+            filtered = filter_symbols(exchange, symbols, min_volume=min_volume, min_liquidity=min_liquidity, max_volatility=max_volatility)
             logger.info(f"Filtered symbols: {filtered}")
             return filtered
         except Exception as e:
@@ -52,8 +65,14 @@ class StrategyManager:
     def generate_signals(self, data: pd.DataFrame, exchange: object) -> List[str]:
         """Generate trading signals using strategies, ML predictions, and market analysis."""
         try:
+            # Analyze market state to determine model_id dynamically
+            market_state = analyze_market_state(data, exchange)
+            # Use a simpler model for high volatility, more complex for stable markets
+            model_id = 1 if market_state['volatility'] > 0.03 else 2
+            logger.info(f"Selected model_id: {model_id} based on volatility: {market_state['volatility']}")
+
             # Use ML prediction to adjust strategy
-            predicted_price = predict(data, model_id=1)
+            predicted_price = predict(data, model_id=model_id)
             logger.info(f"Predicted price: {predicted_price}")
 
             # Analyze market state
@@ -71,9 +90,9 @@ class StrategyManager:
                 elif market_state['bb_position'] == 'oversold' and signal == "sell":
                     signal = "hold"  # Avoid selling in oversold conditions
 
-                # Check risk before trading
+                # Check risk before trading (amount will be set in core.py)
                 if signal in ["buy", "sell"]:
-                    trade = {"symbol": "BTC/USDT", "price": predicted_price, "amount": 0.001}
+                    trade = {"symbol": "BTC/USDT", "price": predicted_price}
                     if not self.risk_manager.check_risk(trade, data):
                         signal = "hold"  # Skip trade if risk limit exceeded
                         logger.info(f"Trade skipped due to risk limit: {trade}")

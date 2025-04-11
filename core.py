@@ -10,6 +10,8 @@ logger = setup_logging('core')
 
 class TradingBot:
     def __init__(self, api_key: str, api_secret: str, symbols: list):
+        self.api_key = api_key
+        self.api_secret = api_secret
         self.exchange, self.exchange_id = ExchangeFactory.create_exchange(api_key, api_secret)
         self.strategy_manager = StrategyManager(self.exchange_id)
         self.symbols = symbols
@@ -41,18 +43,18 @@ class TradingBot:
             # Dynamic max amount: scale based on volatility and balance
             # Lower volatility -> higher trade amount; higher volatility -> lower trade amount
             volatility_factor = max(0.1, min(1.0, 1.0 / (volatility + 0.01)))  # Avoid division by zero
-            max_usd_amount = usdt_balance * 0.1 * volatility_factor  # Use 10% of balance, scaled by volatility
+            max_usdt_amount = usdt_balance * 0.1 * volatility_factor  # Use 10% of balance, scaled by volatility
 
             # Adjust max amount based on order book imbalance
             # If buy pressure is high (positive imbalance), increase amount for buy; if sell pressure is high, increase for sell
             imbalance_factor = 1.0 + abs(order_book_imbalance) * 0.5
-            max_usd_amount *= imbalance_factor
+            max_usdt_amount *= imbalance_factor
 
             # Convert max USD amount to asset amount
-            max_amount = max_usd_amount / current_price
+            max_amount = max_usdt_amount / current_price
 
             # Ensure the amount is between min and max
-            trade_amount = max(min_amount, min(max_amount, max_usd_amount / current_price))
+            trade_amount = max(min_amount, min(max_amount, max_usdt_amount / current_price))
 
             # Round to the nearest valid amount (e.g., MEXC requires 5 decimal places for BTC)
             trade_amount = round(trade_amount, 5)
@@ -72,13 +74,17 @@ class TradingBot:
                 # Monitor performance
                 self.monitor.monitor()
 
+                # Analyze market state for dynamic filtering
+                data = load_historical_data(self.exchange, 'BTC/USDT', '1h', {'volatility': 0.02}, limit=100)
+                market_state = self.strategy_manager.generate_signals(data, self.exchange)
+
                 # Filter symbols
-                filtered_symbols = self.strategy_manager.filter_symbols(self.symbols, self.exchange)
+                filtered_symbols = self.strategy_manager.filter_symbols(self.symbols, self.exchange, market_state)
                 logger.info(f"Filtered symbols: {filtered_symbols}")
 
                 for symbol in filtered_symbols:
                     # Load and preprocess data
-                    data = load_historical_data(self.exchange, symbol, '1h', limit=100)
+                    data = load_historical_data(self.exchange, symbol, '1h', market_state, limit=100)
                     data = preprocess_data(data)
 
                     # Generate signals
@@ -89,8 +95,8 @@ class TradingBot:
                     for signal in signals:
                         if signal in ["buy", "sell"]:
                             # Calculate dynamic trade amount
-                            trade_amount = self.calculate_trade_amount(symbol, self.strategy_manager.generate_signals(data, self.exchange))
-                            trade_execution_task.delay(symbol, signal, trade_amount)
+                            trade_amount = self.calculate_trade_amount(symbol, market_state)
+                            trade_execution_task.delay(symbol, signal, trade_amount, self.exchange.__dict__, self.api_key, self.api_secret)
                             logger.info(f"Scheduled {signal} trade for {symbol} with amount {trade_amount}")
             except Exception as e:
                 logger.error(f"Error in trading loop: {str(e)}")
