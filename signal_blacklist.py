@@ -1,30 +1,41 @@
-import redis
-import logging
+from trading_bot.logging_setup import setup_logging
 
-logger = logging.getLogger(__name__)
+logger = setup_logging('signal_blacklist')
 
 class SignalBlacklist:
-    def __init__(self, redis_host='localhost', redis_port=6379):
-        self.redis = redis.Redis(host=redis_host, port=redis_port, decode_responses=True)
+    def __init__(self, market_state: dict):
+        self.volatility = market_state['volatility']
+        self.blacklist = set()
 
-    def add_signal(self, signal_id):
-        """
-        Add a signal to the blacklist.
+    def add_to_blacklist(self, signal: dict):
+        """Add a signal to the blacklist."""
+        try:
+            # Динамическая корректировка критериев на основе волатильности
+            if self.volatility > 0.5 and signal.get('confidence', 1.0) < 0.7:
+                self.blacklist.add(signal['id'])
+                logger.info(f"Signal {signal['id']} added to blacklist due to high volatility")
+            else:
+                self.blacklist.add(signal['id'])
+                logger.info(f"Signal {signal['id']} added to blacklist")
+        except Exception as e:
+            logger.error(f"Failed to add signal to blacklist: {str(e)}")
+            raise
 
-        Args:
-            signal_id: ID of the signal to blacklist.
-        """
-        self.redis.sadd('blacklist:signals', signal_id)
-        logger.info(f"Added signal {signal_id} to blacklist")
+    def is_blacklisted(self, signal_id: str) -> bool:
+        """Check if a signal is blacklisted."""
+        try:
+            is_blacklisted = signal_id in self.blacklist
+            logger.info(f"Signal {signal_id} is{' ' if is_blacklisted else ' not '}blacklisted")
+            return is_blacklisted
+        except Exception as e:
+            logger.error(f"Failed to check blacklist for signal {signal_id}: {str(e)}")
+            raise
 
-    def is_blacklisted(self, signal_id):
-        """
-        Check if a signal is blacklisted.
-
-        Args:
-            signal_id: ID of the signal to check.
-
-        Returns:
-            bool: True if blacklisted, False otherwise.
-        """
-        return self.redis.sismember('blacklist:signals', signal_id)
+if __name__ == "__main__":
+    # Test run
+    market_state = {'volatility': 0.3}
+    blacklist = SignalBlacklist(market_state)
+    signal = {'id': 'signal_123', 'confidence': 0.8}
+    blacklist.add_to_blacklist(signal)
+    result = blacklist.is_blacklisted('signal_123')
+    print(f"Is signal blacklisted? {result}")

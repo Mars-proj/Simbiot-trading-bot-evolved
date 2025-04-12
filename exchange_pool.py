@@ -1,58 +1,40 @@
-import ccxt.async_support as ccxt
-import logging
+from trading_bot.logging_setup import setup_logging
+from trading_bot.exchange_factory import ExchangeFactory
 
-logger = logging.getLogger(__name__)
+logger = setup_logging('exchange_pool')
 
 class ExchangePool:
-    def __init__(self):
+    def __init__(self, market_state: dict):
+        self.volatility = market_state['volatility']
+        self.factory = ExchangeFactory(market_state)
         self.exchanges = {}
 
-    async def add_exchange(self, exchange_id, api_key, api_secret):
-        """
-        Add an exchange to the pool.
-
-        Args:
-            exchange_id: ID of the exchange (e.g., 'binance').
-            api_key: API key for the exchange.
-            api_secret: API secret for the exchange.
-
-        Returns:
-            Exchange instance.
-        """
+    def add_exchange(self, exchange_name: str):
+        """Add an exchange to the pool."""
         try:
-            exchange_class = getattr(ccxt, exchange_id)
-            exchange = exchange_class({
-                'apiKey': api_key,
-                'secret': api_secret,
-                'enableRateLimit': True,
-            })
-            await exchange.load_markets()
-            self.exchanges[exchange_id] = exchange
-            logger.info(f"Added exchange {exchange_id} to pool")
-            return exchange
+            exchange = self.factory.get_exchange(exchange_name)
+            self.exchanges[exchange_name] = exchange
+            logger.info(f"Added exchange {exchange_name} to pool")
         except Exception as e:
-            logger.error(f"Failed to add exchange {exchange_id}: {str(e)}")
+            logger.error(f"Failed to add exchange {exchange_name}: {str(e)}")
             raise
 
-    async def get_exchange(self, exchange_id):
-        """
-        Get an exchange from the pool.
+    def get_exchange(self, exchange_name: str):
+        """Get an exchange from the pool."""
+        try:
+            exchange = self.exchanges.get(exchange_name)
+            if not exchange:
+                raise ValueError(f"Exchange {exchange_name} not found in pool")
+            logger.info(f"Retrieved exchange {exchange_name} from pool")
+            return exchange
+        except Exception as e:
+            logger.error(f"Failed to get exchange {exchange_name}: {str(e)}")
+            raise
 
-        Args:
-            exchange_id: ID of the exchange.
-
-        Returns:
-            Exchange instance.
-        """
-        if exchange_id not in self.exchanges:
-            raise ValueError(f"Exchange {exchange_id} not found in pool")
-        return self.exchanges[exchange_id]
-
-    async def close(self):
-        """
-        Close all exchanges in the pool.
-        """
-        for exchange_id, exchange in self.exchanges.items():
-            await exchange.close()
-            logger.info(f"Closed exchange {exchange_id}")
-        self.exchanges.clear()
+if __name__ == "__main__":
+    # Test run
+    market_state = {'volatility': 0.3}
+    pool = ExchangePool(market_state)
+    pool.add_exchange('binance')
+    exchange = pool.get_exchange('binance')
+    print(f"Exchange from pool: {exchange}")

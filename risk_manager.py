@@ -1,50 +1,42 @@
-import pandas as pd
-from logging_setup import setup_logging
+from trading_bot.logging_setup import setup_logging
+from trading_bot.trading.risk_calculator import RiskCalculator
 
 logger = setup_logging('risk_manager')
 
 class RiskManager:
-    def __init__(self, exchange: object, market_state: dict):
-        # Dynamic max loss based on market state and balance
+    def __init__(self, market_state: dict, max_risk_per_trade: float = 0.02):
+        self.volatility = market_state['volatility']
+        self.max_risk_per_trade = max_risk_per_trade
+        self.risk_calculator = RiskCalculator(market_state, max_risk_per_trade)
+
+    def assess_risk(self, klines: list, entry_price: float, stop_loss: float, account_balance: float) -> dict:
+        """Assess risk for a trade."""
         try:
-            balance = exchange.fetch_balance()
-            usdt_balance = balance['free'].get('USDT', 0.0)
-            volatility = market_state['volatility']
-            # Lower max loss in high volatility markets
-            volatility_factor = max(0.1, min(1.0, 1.0 / (volatility + 0.01)))
-            self.max_loss = usdt_balance * 0.05 * volatility_factor  # 5% of balance, scaled by volatility
-            self.current_loss = 0.0
-            logger.info(f"Initialized RiskManager with dynamic max_loss: {self.max_loss}")
+            # Рассчитываем размер позиции
+            position_size = self.risk_calculator.calculate_position_size(
+                klines, entry_price, stop_loss, account_balance
+            )
+
+            # Динамическая корректировка риска на основе волатильности
+            adjusted_risk = self.max_risk_per_trade * (1 - self.volatility / 2)
+            risk_amount = account_balance * adjusted_risk
+
+            risk_assessment = {
+                'position_size': position_size,
+                'risk_amount': risk_amount,
+                'is_safe': position_size * (entry_price - stop_loss) <= risk_amount
+            }
+
+            logger.info(f"Risk assessment: {risk_assessment}")
+            return risk_assessment
         except Exception as e:
-            logger.error(f"Failed to initialize RiskManager: {str(e)}")
+            logger.error(f"Failed to assess risk: {str(e)}")
             raise
 
-    def check_risk(self, trade: dict, market_data: pd.DataFrame) -> bool:
-        """Check if a trade is within risk limits."""
-        try:
-            # Calculate trade value
-            trade_value = trade['price'] * trade['amount']
-
-            # Simple VaR calculation (Value at Risk)
-            volatility = market_data['price'].pct_change().std()
-            var_95 = trade_value * 1.65 * volatility  # 95% confidence level
-            potential_loss = trade_value + var_95
-
-            if self.current_loss + potential_loss > self.max_loss:
-                logger.warning(f"Trade rejected: exceeds max loss limit. Current loss: {self.current_loss}, Potential loss: {potential_loss}")
-                return False
-            return True
-        except Exception as e:
-            logger.error(f"Failed to check risk: {str(e)}")
-            raise
-
-    def update_loss(self, trade_result: float):
-        """Update the current loss based on trade result."""
-        try:
-            self.current_loss += trade_result
-            if self.current_loss < 0:
-                self.current_loss = 0.0  # Reset if profit
-            logger.info(f"Updated current loss: {self.current_loss}")
-        except Exception as e:
-            logger.error(f"Failed to update loss: {str(e)}")
-            raise
+if __name__ == "__main__":
+    # Test run
+    market_state = {'volatility': 0.3}
+    manager = RiskManager(market_state)
+    klines = [{'close': float(50000 + i * 100)} for i in range(10)]
+    assessment = manager.assess_risk(klines, 50000, 49000, 10000)
+    print(f"Risk assessment: {assessment}")

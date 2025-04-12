@@ -1,49 +1,46 @@
-import pandas as pd
-import numpy as np
-from sklearn.ensemble import RandomForestRegressor
-import joblib
-import os
-from logging_setup import setup_logging
+from trading_bot.logging_setup import setup_logging
+from trading_bot.models.local_model_api import LocalModelAPI
 
 logger = setup_logging('threshold_predictor')
 
-def train_threshold_predictor(data: pd.DataFrame, model_id: int) -> None:
-    """Train a model to predict optimal thresholds."""
-    try:
-        # Prepare features for threshold prediction
-        X = data[['volatility', 'rsi', 'macd', 'price_change']]
-        y = data['price'].shift(-1)  # Use future price as a proxy for threshold
-        X = X[:-1]
-        y = y[:-1]
+class ThresholdPredictor:
+    def __init__(self, market_state: dict, model_type: str = 'xgboost'):
+        self.volatility = market_state['volatility']
+        self.model_api = LocalModelAPI(market_state, model_type)
 
-        # Train model
-        model = RandomForestRegressor(n_estimators=100, random_state=42)
-        model.fit(X, y)
+    def train(self, X, y):
+        """Train the threshold prediction model."""
+        try:
+            # Динамическая корректировка данных на основе волатильности
+            X_adjusted = [x * (1 + self.volatility / 2) for x in X]
+            y_adjusted = [y_val * (1 + self.volatility / 2) for y_val in y]
+            
+            self.model_api.train(X_adjusted, y_adjusted)
+            logger.info("Threshold predictor trained successfully")
+        except Exception as e:
+            logger.error(f"Failed to train threshold predictor: {str(e)}")
+            raise
 
-        # Save model
-        model_path = f"models/threshold_model_{model_id}.joblib"
-        os.makedirs("models", exist_ok=True)
-        joblib.dump(model, model_path)
-        logger.info(f"Threshold predictor {model_id} trained and saved to {model_path}")
-    except Exception as e:
-        logger.error(f"Failed to train threshold predictor {model_id}: {str(e)}")
-        raise
+    def predict(self, X):
+        """Predict thresholds using the trained model."""
+        try:
+            # Динамическая корректировка данных на основе волатильности
+            X_adjusted = [x * (1 + self.volatility / 2) for x in X]
+            
+            predictions = self.model_api.predict(X_adjusted)
+            logger.info(f"Threshold predictions: {predictions}")
+            return predictions
+        except Exception as e:
+            logger.error(f"Failed to predict thresholds: {str(e)}")
+            raise
 
-def predict_threshold(data: pd.DataFrame, model_id: int) -> float:
-    """Predict an optimal threshold using ML."""
-    try:
-        # Load model
-        model_path = f"models/threshold_model_{model_id}.joblib"
-        model = joblib.load(model_path)
-
-        # Prepare features
-        X = data[['volatility', 'rsi', 'macd', 'price_change']]
-        X = X.iloc[-1:]  # Use the last row for prediction
-
-        # Predict
-        threshold = model.predict(X)[0]
-        logger.info(f"Predicted threshold: {threshold}")
-        return float(threshold)
-    except Exception as e:
-        logger.error(f"Failed to predict threshold: {str(e)}")
-        raise
+if __name__ == "__main__":
+    # Test run
+    import numpy as np
+    market_state = {'volatility': 0.3}
+    predictor = ThresholdPredictor(market_state)
+    X = np.array([[50000 + i * 100] for i in range(10)])
+    y = np.array([51000 + i * 100 for i in range(10)])
+    predictor.train(X, y)
+    predictions = predictor.predict(X)
+    print(f"Threshold predictions: {predictions}")
