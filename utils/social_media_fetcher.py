@@ -1,33 +1,51 @@
-import requests
+import tweepy
 from trading_bot.logging_setup import setup_logging
-from trading_bot.utils.api_rate_limiter import APIRateLimiter
-from trading_bot.utils.api_utils import APIUtils
+from dotenv import load_dotenv
+import os
+import asyncio
+from textblob import TextBlob
+
+# Загружаем переменные из .env
+load_dotenv()
 
 logger = setup_logging('social_media_fetcher')
 
 class SocialMediaFetcher:
-    def __init__(self, api_key: str, market_state: dict):
-        self.base_url = "https://api.twitter.com/2"
-        self.api_key = api_key
-        self.rate_limiter = APIRateLimiter("twitter", market_state)
+    def __init__(self, market_state: dict):
+        self.volatility = market_state['volatility']
+        self.bearer_token = os.getenv('TWITTER_BEARER_TOKEN', 'your_twitter_bearer_token')
+        self.client = tweepy.Client(bearer_token=self.bearer_token)
 
-    def fetch_tweets(self, query: str, max_results: int = 100):
-        """Fetch tweets related to a query."""
+    async def fetch_tweets(self, query: str, max_results: int = 10) -> list:
+        """Fetch tweets related to the query asynchronously and analyze sentiment."""
         try:
-            self.rate_limiter.limit()
-            endpoint = f"{self.base_url}/tweets/search/recent"
-            params = {
-                "query": query,
-                "max_results": max_results
-            }
-            headers = {"Authorization": f"Bearer {self.api_key}"}
-            
-            def request():
-                return requests.get(endpoint, params=params, headers=headers)
-            
-            response = APIUtils.retry_request(request, market_state={'volatility': self.rate_limiter.volatility})
-            logger.info(f"Fetched tweets for query: {query}")
-            return response.json()
+            # Асинхронный запрос к Twitter API
+            loop = asyncio.get_event_loop()
+            tweets = await loop.run_in_executor(None, lambda: self.client.search_recent_tweets(
+                query=query,
+                max_results=max_results,
+                tweet_fields=['created_at', 'lang']
+            ))
+
+            if not tweets.data:
+                logger.info(f"No tweets found for query: {query}")
+                return []
+
+            # Анализируем настроения твитов
+            tweet_data = []
+            for tweet in tweets.data:
+                if tweet.lang == 'en':  # Обрабатываем только твиты на английском
+                    analysis = TextBlob(tweet.text)
+                    sentiment = 'positive' if analysis.sentiment.polarity > 0 else 'negative' if analysis.sentiment.polarity < 0 else 'neutral'
+                    tweet_data.append({
+                        'text': tweet.text,
+                        'created_at': str(tweet.created_at),
+                        'sentiment': sentiment,
+                        'polarity': analysis.sentiment.polarity
+                    })
+
+            logger.info(f"Fetched {len(tweet_data)} tweets for query: {query}")
+            return tweet_data
         except Exception as e:
             logger.error(f"Failed to fetch tweets for query {query}: {str(e)}")
             raise
@@ -35,6 +53,10 @@ class SocialMediaFetcher:
 if __name__ == "__main__":
     # Test run
     market_state = {'volatility': 0.3}
-    fetcher = SocialMediaFetcher("your_twitter_bearer_token", market_state)
-    tweets = fetcher.fetch_tweets("bitcoin")
-    print(f"Tweets: {tweets}")
+    fetcher = SocialMediaFetcher(market_state)
+    
+    async def main():
+        tweets = await fetcher.fetch_tweets("Bitcoin")
+        print(f"Tweets: {tweets}")
+
+    asyncio.run(main())

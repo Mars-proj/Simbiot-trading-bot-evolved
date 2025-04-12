@@ -4,6 +4,7 @@ from trading_bot.trading.trade_executor import TradeExecutor
 from trading_bot.learning.backtest_manager import BacktestManager
 from trading_bot.monitoring.monitoring import Monitoring
 from trading_bot.data_sources.market_data import MarketData
+from trading_bot.analysis.volatility_analyzer import VolatilityAnalyzer
 
 logger = setup_logging('core')
 
@@ -15,6 +16,7 @@ class TradingBotCore:
         self.backtest_manager = BacktestManager(market_state)
         self.monitoring = Monitoring(market_state)
         self.market_data = MarketData(market_state)
+        self.volatility_analyzer = VolatilityAnalyzer(market_state)
 
     def run_trading(self, symbol: str, strategy_name: str, account_balance: float, timeframe: str = '1h', limit: int = 30, exchange_name: str = 'binance') -> dict:
         """Run the trading process for a given strategy."""
@@ -25,6 +27,10 @@ class TradingBotCore:
             # Генерируем сигналы
             signals = self.strategy_manager.generate_signals(klines)[strategy_name]
             
+            # Динамически рассчитываем стоп-лосс на основе волатильности
+            symbol_volatility = self.volatility_analyzer.analyze_volatility(symbol, exchange_name)
+            stop_loss_percentage = 0.05 * (1 + symbol_volatility)  # Базовый стоп-лосс 5%, корректируется на волатильность
+            
             # Выполняем сделки
             trades = []
             for signal in signals:
@@ -34,7 +40,7 @@ class TradingBotCore:
                         side=signal['signal'],
                         klines=klines,
                         entry_price=klines[-1]['close'],  # Последняя цена
-                        stop_loss=klines[-1]['close'] * 0.95,  # Стоп-лосс на 5% ниже
+                        stop_loss=klines[-1]['close'] * (1 - stop_loss_percentage),  # Динамический стоп-лосс
                         account_balance=account_balance
                     )
                     trades.append(trade)
@@ -73,15 +79,15 @@ if __name__ == "__main__":
     symbol_filter = SymbolFilter(market_state)
     
     # Получаем символы
-    symbols = symbol_filter.filter_symbols(core.market_data.get_symbols('binance'), 'binance')
+    symbols = symbol_filter.filter_symbols(core.market_data.get_symbols('mexc'), 'mexc')
     
     # Run trading
-    trades = core.run_trading(symbols[0], 'bollinger', 10000, '1h', 30, 'binance')
+    trades = core.run_trading(symbols[0], 'bollinger', 10000, '1h', 30, 'mexc')
     print(f"Trades for {symbols[0]}: {trades}")
     
     # Run backtest
     strategies = ['bollinger', 'rsi']
-    backtest_results = core.run_backtest(symbols[:2], strategies, '1h', 30, 'binance')
+    backtest_results = core.run_backtest(symbols[:2], strategies, '1h', 30, 'mexc')
     print(f"Backtest results: {backtest_results}")
     
     # Run monitoring

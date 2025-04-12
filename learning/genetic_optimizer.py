@@ -1,113 +1,134 @@
 import random
-from typing import List, Dict
-from trading_bot.strategies.strategy import Strategy
 from trading_bot.logging_setup import setup_logging
+from trading_bot.strategies.strategy import Strategy
+from trading_bot.data_sources.market_data import MarketData
+from trading_bot.learning.backtester import Backtester
 
 logger = setup_logging('genetic_optimizer')
 
 class GeneticOptimizer:
-    def __init__(self, market_state: dict, population_size: int, generations: int):
+    def __init__(self, market_state: dict):
         self.volatility = market_state['volatility']
-        self.population_size = population_size
-        self.generations = generations
+        self.market_data = MarketData(market_state)
+        self.backtester = Backtester(market_state)
+        self.population_size = 50
+        self.generations = 20
+        self.mutation_rate = 0.1
 
-    def optimize(self, strategy: Strategy, symbols: list, timeframe: str = '1h', limit: int = 30, exchange_name: str = 'binance') -> Dict:
-        """Optimize strategy parameters using a genetic algorithm."""
-        try:
-            population = self._initialize_population()
-            for generation in range(self.generations):
-                population = self._evolve_population(population, strategy, symbols, timeframe, limit, exchange_name)
-                logger.info(f"Generation {generation + 1}/{self.generations} completed")
-            best_individual = self._get_best_individual(population, strategy, symbols, timeframe, limit, exchange_name)
-            logger.info(f"Optimization completed with best individual: {best_individual}")
-            return best_individual
-        except Exception as e:
-            logger.error(f"Failed to optimize strategy: {str(e)}")
-            raise
+    def generate_random_strategy(self) -> dict:
+        """Generate a random trading strategy with parameters."""
+        strategy_types = ['rsi', 'bollinger', 'macd']
+        strategy_type = random.choice(strategy_types)
 
-    def _initialize_population(self) -> List[Dict]:
-        """Initialize a population of individuals with random parameters."""
-        population = []
-        for _ in range(self.population_size):
-            individual = {
-                "threshold": random.uniform(5000, 15000),  # Price threshold for signals
-                "stop_loss": random.uniform(0.01, 0.05),  # Stop-loss percentage
-                "take_profit": random.uniform(0.02, 0.10)  # Take-profit percentage
+        if strategy_type == 'rsi':
+            return {
+                'type': 'rsi',
+                'period': random.randint(10, 20),
+                'overbought': random.uniform(60, 80),
+                'oversold': random.uniform(20, 40)
             }
-            population.append(individual)
-        return population
+        elif strategy_type == 'bollinger':
+            return {
+                'type': 'bollinger',
+                'period': random.randint(10, 30),
+                'std_dev_multiplier': random.uniform(1.5, 3.0)
+            }
+        elif strategy_type == 'macd':
+            return {
+                'type': 'macd',
+                'short_period': random.randint(5, 15),
+                'long_period': random.randint(20, 30),
+                'signal_period': random.randint(5, 15)
+            }
 
-    def _evaluate_individual(self, individual: Dict, strategy: Strategy, symbols: list, timeframe: str, limit: int, exchange_name: str) -> float:
-        """Evaluate an individual by running a backtest."""
+    def crossover(self, parent1: dict, parent2: dict) -> dict:
+        """Perform crossover between two strategies."""
+        child = parent1.copy()
+        for key in child:
+            if random.random() < 0.5:
+                child[key] = parent2[key]
+        return child
+
+    def mutate(self, strategy: dict) -> dict:
+        """Mutate a strategy's parameters."""
+        mutated = strategy.copy()
+        if random.random() < self.mutation_rate:
+            if mutated['type'] == 'rsi':
+                mutated['period'] = random.randint(10, 20)
+                mutated['overbought'] = random.uniform(60, 80)
+                mutated['oversold'] = random.uniform(20, 40)
+            elif mutated['type'] == 'bollinger':
+                mutated['period'] = random.randint(10, 30)
+                mutated['std_dev_multiplier'] = random.uniform(1.5, 3.0)
+            elif mutated['type'] == 'macd':
+                mutated['short_period'] = random.randint(5, 15)
+                mutated['long_period'] = random.randint(20, 30)
+                mutated['signal_period'] = random.randint(5, 15)
+        return mutated
+
+    async def optimize(self, symbols: list, timeframe: str = '1h', limit: int = 30, exchange_name: str = 'mexc') -> dict:
+        """Optimize trading strategies using a genetic algorithm."""
         try:
-            strategy.params = individual
-            result = strategy.backtest(symbols, timeframe, limit, exchange_name)
-            total_profit = sum(r['profit'] for r in result.values())
-            return total_profit
+            # Инициализируем популяцию
+            population = [self.generate_random_strategy() for _ in range(self.population_size)]
+            
+            for generation in range(self.generations):
+                # Оцениваем каждую стратегию через бэктестинг
+                fitness_scores = []
+                for strategy in population:
+                    # Создаём временную стратегию для бэктестинга
+                    if strategy['type'] == 'rsi':
+                        temp_strategy = RSIStrategy({'volatility': self.volatility})
+                        temp_strategy.rsi_period = strategy['period']
+                        temp_strategy.overbought_threshold = strategy['overbought']
+                        temp_strategy.oversold_threshold = strategy['oversold']
+                    elif strategy['type'] == 'bollinger':
+                        temp_strategy = BollingerStrategy({'volatility': self.volatility})
+                        temp_strategy.bollinger_period = strategy['period']
+                        temp_strategy.std_dev_multiplier = strategy['std_dev_multiplier']
+                    elif strategy['type'] == 'macd':
+                        temp_strategy = MACDStrategy({'volatility': self.volatility})
+                        temp_strategy.short_period = strategy['short_period']
+                        temp_strategy.long_period = strategy['long_period']
+                        temp_strategy.signal_period = strategy['signal_period']
+
+                    # Запускаем бэктестинг
+                    result = await self.backtester.run_backtest(symbols, temp_strategy, timeframe, limit, exchange_name)
+                    total_profit = sum(res['profit'] for res in result.values())
+                    fitness_scores.append((strategy, total_profit))
+
+                # Сортируем по фитнесу (прибыли)
+                fitness_scores.sort(key=lambda x: x[1], reverse=True)
+                logger.info(f"Generation {generation + 1}: Best profit = {fitness_scores[0][1]}")
+
+                # Выбираем лучших для следующего поколения
+                next_population = [strategy for strategy, _ in fitness_scores[:self.population_size // 2]]
+
+                # Создаём потомков через кроссовер и мутацию
+                while len(next_population) < self.population_size:
+                    parent1, parent2 = random.sample(next_population, 2)
+                    child = self.crossover(parent1, parent2)
+                    child = self.mutate(child)
+                    next_population.append(child)
+
+                population = next_population
+
+            # Возвращаем лучшую стратегию
+            best_strategy, best_profit = fitness_scores[0]
+            logger.info(f"Best strategy after optimization: {best_strategy} with profit {best_profit}")
+            return best_strategy
         except Exception as e:
-            logger.error(f"Failed to evaluate individual: {str(e)}")
+            logger.error(f"Failed to optimize strategies: {str(e)}")
             raise
 
-    def _evolve_population(self, population: List[Dict], strategy: Strategy, symbols: list, timeframe: str, limit: int, exchange_name: str) -> List[Dict]:
-        """Evolve the population: selection, crossover, mutation."""
-        try:
-            # Evaluate fitness of each individual
-            fitness_scores = [(individual, self._evaluate_individual(individual, strategy, symbols, timeframe, limit, exchange_name)) for individual in population]
-            fitness_scores.sort(key=lambda x: x[1], reverse=True)  # Sort by profit (descending)
+if __name__ == "__main__":
+    # Test run
+    market_state = {'volatility': 0.3}
+    optimizer = GeneticOptimizer(market_state)
+    
+    async def main():
+        symbols = ['BTC/USDT', 'ETH/USDT']
+        best_strategy = await optimizer.optimize(symbols, '1h', 30, 'mexc')
+        print(f"Best strategy: {best_strategy}")
 
-            # Select top 50% for reproduction
-            elite_size = self.population_size // 2
-            elite = [individual for individual, _ in fitness_scores[:elite_size]]
-
-            # Create new population through crossover and mutation
-            new_population = elite.copy()
-            while len(new_population) < self.population_size:
-                parent1, parent2 = random.sample(elite, 2)
-                child = self._crossover(parent1, parent2)
-                child = self._mutate(child)
-                new_population.append(child)
-
-            return new_population[:self.population_size]
-        except Exception as e:
-            logger.error(f"Failed to evolve population: {str(e)}")
-            raise
-
-    def _crossover(self, parent1: Dict, parent2: Dict) -> Dict:
-        """Perform crossover between two parents."""
-        try:
-            child = {}
-            for key in parent1:
-                child[key] = random.choice([parent1[key], parent2[key]])
-            return child
-        except Exception as e:
-            logger.error(f"Failed to perform crossover: {str(e)}")
-            raise
-
-    def _mutate(self, individual: Dict) -> Dict:
-        """Mutate an individual."""
-        try:
-            mutation_rate = 0.1
-            mutated = individual.copy()
-            for key in mutated:
-                if random.random() < mutation_rate:
-                    if key == "threshold":
-                        mutated[key] = random.uniform(5000, 15000)
-                    elif key == "stop_loss":
-                        mutated[key] = random.uniform(0.01, 0.05)
-                    elif key == "take_profit":
-                        mutated[key] = random.uniform(0.02, 0.10)
-            return mutated
-        except Exception as e:
-            logger.error(f"Failed to mutate individual: {str(e)}")
-            raise
-
-    def _get_best_individual(self, population: List[Dict], strategy: Strategy, symbols: list, timeframe: str, limit: int, exchange_name: str) -> Dict:
-        """Get the best individual based on fitness."""
-        try:
-            fitness_scores = [(individual, self._evaluate_individual(individual, strategy, symbols, timeframe, limit, exchange_name)) for individual in population]
-            best_individual, best_fitness = max(fitness_scores, key=lambda x: x[1])
-            logger.info(f"Best fitness: {best_fitness}")
-            return best_individual
-        except Exception as e:
-            logger.error(f"Failed to get best individual: {str(e)}")
-            raise
+    asyncio.run(main())

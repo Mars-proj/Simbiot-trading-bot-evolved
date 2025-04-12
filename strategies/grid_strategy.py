@@ -1,56 +1,64 @@
 from trading_bot.logging_setup import setup_logging
-from trading_bot.utils.utils_utils import calculate_dynamic_threshold
-import numpy as np
+from trading_bot.data_sources.market_data import MarketData
+from trading_bot.strategies.strategy import Strategy
+from trading_bot.analysis.volatility_analyzer import VolatilityAnalyzer
 
 logger = setup_logging('grid_strategy')
 
-class GridStrategy:
-    def __init__(self, market_state: dict, grid_levels: int = 5, grid_spacing: float = 0.02):
-        self.volatility = market_state['volatility']
-        self.grid_levels = grid_levels
-        self.grid_spacing = grid_spacing
+class GridStrategy(Strategy):
+    def __init__(self, market_state: dict):
+        super().__init__(market_state)
+        self.grid_levels = 5
+        self.market_data = MarketData(market_state)
+        self.volatility_analyzer = VolatilityAnalyzer(market_state)
 
-    def generate_signals(self, klines: list) -> list:
-        """Generate trading signals using Grid strategy."""
+    def generate_signal(self, symbol: str, timeframe: str = '1h', limit: int = 30, exchange_name: str = 'binance') -> str:
+        """Generate a trading signal based on grid strategy with dynamic spacing."""
         try:
-            if len(klines) < 2:
-                logger.warning("Not enough kline data for Grid strategy")
-                return []
+            # Получаем данные с биржи
+            klines = self.market_data.get_klines(symbol, timeframe, limit, exchange_name)
+            if len(klines) < 1:
+                logger.warning(f"No data for {symbol} to calculate grid levels")
+                return "hold"
 
-            closes = [float(kline['close']) for kline in klines]
-            current_price = closes[-1]
+            # Динамически рассчитываем grid spacing на основе волатильности
+            symbol_volatility = self.volatility_analyzer.analyze_volatility(symbol, exchange_name)
+            grid_spacing = 0.01 * (1 + symbol_volatility)  # Базовый spacing 1%, корректируется на волатильность
+
+            # Calculate grid levels based on the last price
+            last_price = klines[-1]['close']
+            grid_base = last_price * (1 - self.grid_levels * grid_spacing / 2)
+            grid_levels = [grid_base + i * grid_spacing * last_price for i in range(self.grid_levels)]
+
+            # Find the closest grid level
+            price = klines[-1]['close']
+            closest_level = min(grid_levels, key=lambda x: abs(x - price))
             
-            # Динамический шаг сетки на основе волатильности
-            adjusted_spacing = self.grid_spacing * (1 + self.volatility)
-            
-            # Определяем центральную цену (средняя за последние несколько свечей)
-            center_price = np.mean(closes[-self.grid_levels:])
-            
-            # Создаём уровни сетки
-            grid = [center_price * (1 + i * adjusted_spacing) for i in range(-self.grid_levels, self.grid_levels + 1)]
-            
-            signals = []
-            for i in range(len(klines)):
-                price = closes[i]
-                for level in grid:
-                    if price > level and price < level + adjusted_spacing:
-                        signals.append({'timestamp': klines[i]['timestamp'], 'signal': 'buy'})
-                    elif price < level and price > level - adjusted_spacing:
-                        signals.append({'timestamp': klines[i]['timestamp'], 'signal': 'sell'})
-                    else:
-                        signals.append({'timestamp': klines[i]['timestamp'], 'signal': 'hold'})
-            
-            logger.info(f"Generated {len(signals)} Grid strategy signals")
-            return signals
+            if price > closest_level:
+                signal = "buy"
+            elif price < closest_level:
+                signal = "sell"
+            else:
+                signal = "hold"
+
+            logger.info(f"Generated signal for {symbol}: {signal} (Price: {price}, Closest Level: {closest_level})")
+            return signal
         except Exception as e:
-            logger.error(f"Failed to generate Grid strategy signals: {str(e)}")
+            logger.error(f"Error generating signal for {symbol}: {str(e)}")
             raise
 
 if __name__ == "__main__":
     # Test run
+    from trading_bot.symbol_filter import SymbolFilter
     market_state = {'volatility': 0.3}
     strategy = GridStrategy(market_state)
-    klines = [{'timestamp': i, 'close': float(50000 + i * 100)} for i in range(10)]
-    signals = strategy.generate_signals(klines)
-    print(f"Signals: {signals}")y
-
+    symbol_filter = SymbolFilter(market_state)
+    
+    # Получаем символы
+    symbols = symbol_filter.filter_symbols(strategy.market_data.get_symbols('mexc'), 'mexc')
+    
+    if symbols:
+        signal = strategy.generate_signal(symbols[0], '1h', 30, 'mexc')
+        print(f"Signal for {symbols[0]}: {signal}")
+    else:
+        print("No symbols available for testing")

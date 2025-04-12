@@ -1,65 +1,48 @@
 from trading_bot.logging_setup import setup_logging
-from trading_bot.data_sources.market_data import MarketData
-from .order_manager import OrderManager
-from .position_manager import PositionManager
-from .risk_calculator import RiskCalculator
+from trading_bot.utils.performance_tracker import PerformanceTracker
+from trading_bot.analysis.volatility_analyzer import VolatilityAnalyzer
 
 logger = setup_logging('trade_executor')
 
 class TradeExecutor:
     def __init__(self, market_state: dict):
         self.volatility = market_state['volatility']
-        self.order_manager = OrderManager(market_state)
-        self.position_manager = PositionManager(market_state)
-        self.risk_calculator = RiskCalculator(market_state)
-        self.market_data = MarketData(market_state)
+        self.performance_tracker = PerformanceTracker(market_state)
+        self.volatility_analyzer = VolatilityAnalyzer(market_state)
+        self.min_trade_amount = 10.0  # Минимальная сумма сделки в долларах
+        self.commission_rate = 0.001  # Комиссия 0.1%
 
-    def execute_trade(self, symbol: str, side: str, account_balance: float, timeframe: str = '1h', limit: int = 30, exchange_name: str = 'binance') -> dict:
-        """Execute a trade based on the given signal."""
+    def execute_trade(self, symbol: str, side: str, klines: list, entry_price: float, stop_loss: float, account_balance: float, exchange_name: str = 'binance') -> dict:
+        """Execute a trade with dynamic stop-loss and take-profit."""
         try:
-            # Получаем данные для расчёта
-            klines = self.market_data.get_klines(symbol, timeframe, limit, exchange_name)
-            if not klines:
-                logger.warning(f"No klines data for {symbol} on {exchange_name}")
-                return {'status': 'failed', 'reason': 'no data'}
+            # Проверяем минимальную сумму сделки
+            trade_amount = max(self.min_trade_amount + (self.min_trade_amount * self.commission_rate), account_balance * 0.01)  # 1% от баланса, но не менее минимальной суммы
+            if trade_amount > account_balance:
+                logger.warning(f"Insufficient balance for trade: {trade_amount} > {account_balance}")
+                return {}
 
-            # Получаем текущую цену и устанавливаем стоп-лосс
-            entry_price = klines[-1]['close']
-            stop_loss = entry_price * 0.95  # 5% ниже
+            # Динамически рассчитываем тейк-профит на основе волатильности
+            symbol_volatility = self.volatility_analyzer.analyze_volatility(symbol, exchange_name)
+            take_profit_percentage = 0.10 * (1 + symbol_volatility)  # Базовый тейк-профит 10%, корректируется на волатильность
+            take_profit = entry_price * (1 + take_profit_percentage if side == 'buy' else 1 - take_profit_percentage)
 
-            # Рассчитываем размер позиции
-            quantity = self.risk_calculator.calculate_position_size(symbol, entry_price, stop_loss, account_balance, timeframe, limit, exchange_name)
-            if quantity <= 0:
-                logger.warning("Invalid position size, trade not executed")
-                return {'status': 'failed', 'reason': 'invalid position size'}
+            # Симулируем выполнение сделки
+            trade = {
+                'symbol': symbol,
+                'side': side,
+                'entry_price': entry_price,
+                'amount': trade_amount,
+                'stop_loss': stop_loss,
+                'take_profit': take_profit,
+                'timestamp': klines[-1]['timestamp']
+            }
 
-            # Размещаем ордер
-            order = self.order_manager.place_order(symbol, side, quantity, entry_price)
-            if order['status'] != 'placed':
-                logger.warning(f"Order placement failed: {order['reason']}")
-                return order
+            # Логируем сделку
+            logger.info(f"Executed trade: {trade}")
+            self.performance_tracker.record_request()
 
-            # Открываем позицию
-            position = self.position_manager.open_position(symbol, side, quantity, entry_price)
-            logger.info(f"Trade executed: {position}")
-            return position
+            return trade
         except Exception as e:
-            logger.error(f"Failed to execute trade: {str(e)}")
+            logger.error(f"Failed to execute trade for {symbol}: {str(e)}")
+            self.performance_tracker.record_error()
             raise
-
-if __name__ == "__main__":
-    # Test run
-    from trading_bot.symbol_filter import SymbolFilter
-    market_state = {'volatility': 0.3}
-    executor = TradeExecutor(market_state)
-    symbol_filter = SymbolFilter(market_state)
-    
-    # Получаем символы
-    symbols = symbol_filter.filter_symbols(executor.market_data.get_symbols('binance'), 'binance')
-    
-    if symbols:
-        account_balance = 10000
-        trade = executor.execute_trade(symbols[0], "buy", account_balance, '1h', 30, 'binance')
-        print(f"Trade for {symbols[0]}: {trade}")
-    else:
-        print("No symbols available for testing")
