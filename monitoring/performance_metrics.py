@@ -9,31 +9,27 @@ class PerformanceMetrics:
         self.performance_tracker = PerformanceTracker(market_state)
 
     def calculate_metrics(self) -> dict:
-        """Calculate performance metrics for the system."""
+        """Calculate performance metrics."""
         try:
-            # Получаем базовые метрики из PerformanceTracker
-            raw_metrics = self.performance_tracker.get_metrics()
+            metrics = self.performance_tracker.get_metrics()
             
-            # Динамическая корректировка метрик на основе волатильности
-            adjusted_latency = raw_metrics['latency'] * (1 + self.volatility / 2)
-            adjusted_error_rate = raw_metrics['error_rate'] * (1 + self.volatility / 2)
-            
-            metrics = {
-                'adjusted_latency': adjusted_latency,
-                'adjusted_error_rate': adjusted_error_rate,
-                'uptime': raw_metrics['uptime'],
-                'trade_volume': raw_metrics.get('trade_volume', 0)
-            }
-            
-            logger.info(f"Calculated performance metrics: {metrics}")
-            return metrics
+            # Adjust metrics based on volatility
+            adjusted_metrics = {}
+            for key, value in metrics.items():
+                if isinstance(value, (int, float)):
+                    adjusted_metrics[key] = value * (1 + self.volatility / 2)
+                else:
+                    adjusted_metrics[key] = value
+
+            logger.info(f"Calculated performance metrics: {adjusted_metrics}")
+            return adjusted_metrics
         except Exception as e:
-            logger.error(f"Failed to calculate performance metrics: {str(e)}")
+            logger.error(f"Failed to calculate metrics: {str(e)}")
             raise
 
 if __name__ == "__main__":
     # Test run
     market_state = {'volatility': 0.3}
-    metrics_calculator = PerformanceMetrics(market_state)
-    metrics = metrics_calculator.calculate_metrics()
+    performance_metrics = PerformanceMetrics(market_state)
+    metrics = performance_metrics.calculate_metrics()
     print(f"Performance metrics: {metrics}")

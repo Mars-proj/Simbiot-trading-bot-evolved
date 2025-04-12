@@ -1,4 +1,5 @@
 from trading_bot.logging_setup import setup_logging
+from .alert_manager import AlertManager
 from .health_checker import HealthChecker
 from .performance_monitor import PerformanceMonitor
 
@@ -7,25 +8,32 @@ logger = setup_logging('monitoring')
 class Monitoring:
     def __init__(self, market_state: dict):
         self.volatility = market_state['volatility']
+        self.alert_manager = AlertManager(market_state)
         self.health_checker = HealthChecker(market_state)
         self.performance_monitor = PerformanceMonitor(market_state)
 
-    def run_monitoring(self):
-        """Run full system monitoring."""
+    def run_monitoring(self) -> dict:
+        """Run the monitoring process."""
         try:
-            # Проверяем здоровье системы
+            # Check system health
             health_status = self.health_checker.check_health()
             
-            # Мониторим производительность
-            performance_metrics = self.performance_monitor.monitor()
+            # Monitor performance
+            performance_metrics = self.performance_monitor.monitor_performance()
             
-            monitoring_result = {
-                'health_status': health_status,
-                'performance_metrics': performance_metrics
+            # Prepare monitoring result
+            result = {
+                'health': health_status,
+                'performance': performance_metrics
             }
             
-            logger.info(f"Monitoring result: {monitoring_result}")
-            return monitoring_result
+            # Send alerts if necessary
+            if not health_status['is_healthy']:
+                alert_message = f"System Health Alert: {health_status['details']}"
+                self.alert_manager.send_alert(alert_message)
+
+            logger.info(f"Monitoring result: {result}")
+            return result
         except Exception as e:
             logger.error(f"Failed to run monitoring: {str(e)}")
             raise
