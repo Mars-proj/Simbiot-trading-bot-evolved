@@ -1,5 +1,6 @@
 from trading_bot.logging_setup import setup_logging
 from trading_bot.utils.cache_manager import CacheManager
+from trading_bot.data_sources.market_data import MarketData
 
 logger = setup_logging('order_manager')
 
@@ -7,6 +8,7 @@ class OrderManager:
     def __init__(self, market_state: dict):
         self.volatility = market_state['volatility']
         self.cache = CacheManager(market_state)
+        self.market_data = MarketData(market_state)
         self.min_order_size = 10.0  # Минимальный размер ордера в USD
 
     def place_order(self, symbol: str, side: str, quantity: float, price: float) -> dict:
@@ -39,7 +41,23 @@ class OrderManager:
 
 if __name__ == "__main__":
     # Test run
+    from trading_bot.symbol_filter import SymbolFilter
     market_state = {'volatility': 0.3}
     manager = OrderManager(market_state)
-    order = manager.place_order("BTC/USDT", "buy", 0.1, 50000)
-    print(f"Order: {order}")
+    symbol_filter = SymbolFilter(market_state)
+    
+    # Получаем символы
+    symbols = symbol_filter.filter_symbols(manager.market_data.get_symbols('binance'), 'binance')
+    
+    if symbols:
+        # Получаем последнюю цену
+        klines = manager.market_data.get_klines(symbols[0], '1h', 1, 'binance')
+        if klines:
+            price = klines[-1]['close']
+            quantity = 0.1  # Можно сделать динамическим, например, на основе баланса
+            order = manager.place_order(symbols[0], "buy", quantity, price)
+            print(f"Order for {symbols[0]}: {order}")
+        else:
+            print(f"No klines data for {symbols[0]}")
+    else:
+        print("No symbols available for testing")
