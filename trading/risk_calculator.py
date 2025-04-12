@@ -3,8 +3,8 @@ import os
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 from utils.logging_setup import setup_logging
-from trading_bot.utils.performance_tracker import PerformanceTracker
-from trading_bot.analysis.volatility_analyzer import VolatilityAnalyzer
+from utils.performance_tracker import PerformanceTracker
+from analysis.volatility_analyzer import VolatilityAnalyzer
 
 logger = setup_logging('risk_calculator')
 

@@ -3,7 +3,7 @@ import os
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 from utils.logging_setup import setup_logging
-from trading_bot.utils.performance_tracker import PerformanceTracker
+from utils.performance_tracker import PerformanceTracker
 
 logger = setup_logging('order_manager')
 
