@@ -1,44 +1,52 @@
 from trading_bot.logging_setup import setup_logging
-from trading_bot.models.local_model_api import LocalModelAPI
+from trading_bot.models.base_model import BaseModel
+from trading_bot.data_sources.market_data import MarketData
+from trading_bot.symbol_filter import SymbolFilter
 
 logger = setup_logging('online_learning')
 
 class OnlineLearning:
-    def __init__(self, market_state: dict, model_type: str = 'lstm'):
+    def __init__(self, market_state: dict):
         self.volatility = market_state['volatility']
-        self.model_api = LocalModelAPI(market_state, model_type)
+        self.model = BaseModel(market_state)
+        self.market_data = MarketData(market_state)
 
-    def update_model(self, X_new, y_new):
+    def update_model(self, symbol: str, timeframe: str = '1h', limit: int = 30, exchange_name: str = 'binance') -> None:
         """Update the model with new data."""
         try:
-            # Корректируем данные на основе волатильности
-            X_adjusted = X_new * (1 + self.volatility / 2)
-            y_adjusted = y_new * (1 + self.volatility / 2)
-            
-            # Обновляем модель
-            self.model_api.train(X_adjusted, y_adjusted)
-            logger.info("Model updated with new data")
-        except Exception as e:
-            logger.error(f"Failed to update model: {str(e)}")
-            raise
+            # Получаем данные с биржи
+            klines = self.market_data.get_klines(symbol, timeframe, limit, exchange_name)
+            if not klines:
+                logger.warning(f"No klines data for {symbol} on {exchange_name}")
+                return
 
-    def predict(self, X):
-        """Make predictions using the updated model."""
-        try:
-            predictions = self.model_api.predict(X)
-            logger.info(f"Made {len(predictions)} predictions with updated model")
-            return predictions
+            # Формируем данные для обновления модели
+            new_data = {
+                'price': klines[-1]['close'],
+                'volume': klines[-1]['volume'],
+                'high': klines[-1]['high'],
+                'low': klines[-1]['low']
+            }
+
+            # Динамическая корректировка данных на основе волатильности
+            adjusted_data = {k: v * (1 + self.volatility / 2) if isinstance(v, (int, float)) else v for k, v in new_data.items()}
+            
+            self.model.update(adjusted_data)
+            logger.info(f"Model updated with new data for {symbol}")
         except Exception as e:
-            logger.error(f"Failed to make predictions: {str(e)}")
+            logger.error(f"Failed to update model for {symbol}: {str(e)}")
             raise
 
 if __name__ == "__main__":
     # Test run
-    import numpy as np
     market_state = {'volatility': 0.3}
-    learner = OnlineLearning(market_state)
-    X_new = np.array([[50000 + i * 100] for i in range(10)])
-    y_new = np.array([51000 + i * 100 for i in range(10)])
-    learner.update_model(X_new, y_new)
-    predictions = learner.predict(X_new)
-    print(f"Predictions: {predictions}")
+    online_learning = OnlineLearning(market_state)
+    symbol_filter = SymbolFilter(market_state)
+    
+    # Получаем символы
+    symbols = symbol_filter.filter_symbols(online_learning.market_data.get_symbols('binance'), 'binance')
+    
+    if symbols:
+        online_learning.update_model(symbols[0], '1h', 30, 'binance')
+    else:
+        print("No symbols available for testing")
