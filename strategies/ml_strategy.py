@@ -4,11 +4,12 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 import asyncio
 from utils.logging_setup import setup_logging
-from trading_bot.data_sources.market_data import MarketData
-from trading_bot.strategies.strategy import Strategy
-from trading_bot.models.local_model_api import LocalModelAPI
-from trading_bot.utils.news_fetcher import NewsFetcher
-from trading_bot.utils.social_media_fetcher import SocialMediaFetcher
+from data_sources.market_data import MarketData
+from .strategy import Strategy
+from models.local_model_api import LocalModelAPI
+from utils.news_fetcher import NewsFetcher
+from utils.social_media_fetcher import SocialMediaFetcher
+from textblob import TextBlob
 
 logger = setup_logging('ml_strategy')
 
@@ -89,7 +90,7 @@ class MLStrategy(Strategy):
 
 if __name__ == "__main__":
     # Test run
-    from trading_bot.symbol_filter import SymbolFilter
+    from symbol_filter import SymbolFilter
     market_state = {'volatility': 0.3}
     strategy = MLStrategy(market_state)
     symbol_filter = SymbolFilter(market_state)

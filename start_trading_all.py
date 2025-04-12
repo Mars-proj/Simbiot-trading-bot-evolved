@@ -4,9 +4,9 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '.')))
 
 import asyncio
 from utils.logging_setup import setup_logging
-from trading_bot.core import TradingBotCore
-from trading_bot.symbol_filter import SymbolFilter
-from trading_bot.data_sources.market_data import MarketData
+from core import TradingBotCore
+from symbol_filter import SymbolFilter
+from data_sources.market_data import MarketData
 
 logger = setup_logging('start_trading_all')
 

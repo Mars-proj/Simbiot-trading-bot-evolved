@@ -4,8 +4,8 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 import asyncio
 from utils.logging_setup import setup_logging
-from trading_bot.data_sources.market_data import MarketData
-from trading_bot.strategies.strategy import Strategy
+from data_sources.market_data import MarketData
+from .strategy import Strategy
 
 logger = setup_logging('arbitrage_strategy')
 
@@ -73,7 +73,7 @@ class ArbitrageStrategy(Strategy):
 
 if __name__ == "__main__":
     # Test run
-    from trading_bot.symbol_filter import SymbolFilter
+    from symbol_filter import SymbolFilter
     market_state = {'volatility': 0.3}
     strategy = ArbitrageStrategy(market_state)
     symbol_filter = SymbolFilter(market_state)
@@ -87,3 +87,4 @@ if __name__ == "__main__":
         print(f"Signal for {symbols[0]}: {signal}")
     else:
         print("No symbols available for testing")
+

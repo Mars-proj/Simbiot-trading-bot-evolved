@@ -3,7 +3,7 @@ import os
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '.')))
 
 from utils.logging_setup import setup_logging
-from trading_bot.data_sources.market_data import MarketData
+from data_sources.market_data import MarketData
 
 logger = setup_logging('symbol_filter')
 

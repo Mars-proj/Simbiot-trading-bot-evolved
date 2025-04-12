@@ -3,9 +3,9 @@ import os
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 from utils.logging_setup import setup_logging
-from trading_bot.data_sources.market_data import MarketData
-from trading_bot.strategies.strategy import Strategy
-from trading_bot.analysis.volatility_analyzer import VolatilityAnalyzer
+from data_sources.market_data import MarketData
+from .strategy import Strategy
+from analysis.volatility_analyzer import VolatilityAnalyzer
 import statistics
 
 logger = setup_logging('bollinger_strategy')
@@ -17,7 +17,7 @@ class BollingerStrategy(Strategy):
         self.market_data = MarketData(market_state)
         self.volatility_analyzer = VolatilityAnalyzer(market_state)
 
-    def calculate_bollinger_bands(self, closes: list) -> tuple:
+    def calculate_bollinger_bands(self, closes: list, symbol: str, exchange_name: str) -> tuple:
         """Calculate Bollinger Bands with dynamic standard deviation multiplier."""
         if len(closes) < self.bollinger_period:
             return None, None, None
@@ -43,7 +43,7 @@ class BollingerStrategy(Strategy):
                 return "hold"
 
             closes = [kline['close'] for kline in klines]
-            sma, upper_band, lower_band = self.calculate_bollinger_bands(closes)
+            sma, upper_band, lower_band = self.calculate_bollinger_bands(closes, symbol, exchange_name)
 
             if sma is None:
                 return "hold"
@@ -64,7 +64,7 @@ class BollingerStrategy(Strategy):
 
 if __name__ == "__main__":
     # Test run
-    from trading_bot.symbol_filter import SymbolFilter
+    from symbol_filter import SymbolFilter
     market_state = {'volatility': 0.3}
     strategy = BollingerStrategy(market_state)
     symbol_filter = SymbolFilter(market_state)

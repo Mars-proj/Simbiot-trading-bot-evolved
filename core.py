@@ -3,12 +3,12 @@ import os
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '.')))
 
 from utils.logging_setup import setup_logging
-from trading_bot.strategies.strategy_manager import StrategyManager
-from trading_bot.trading.trade_executor import TradeExecutor
-from trading_bot.learning.backtest_manager import BacktestManager
-from trading_bot.monitoring.monitoring import Monitoring
-from trading_bot.data_sources.market_data import MarketData
-from trading_bot.analysis.volatility_analyzer import VolatilityAnalyzer
+from strategies.strategy_manager import StrategyManager
+from trading.trade_executor import TradeExecutor
+from learning.backtest_manager import BacktestManager
+from monitoring.monitoring import Monitoring
+from data_sources.market_data import MarketData
+from analysis.volatility_analyzer import VolatilityAnalyzer
 
 logger = setup_logging('core')
 
@@ -77,7 +77,7 @@ class TradingBotCore:
 
 if __name__ == "__main__":
     # Test run
-    from trading_bot.symbol_filter import SymbolFilter
+    from symbol_filter import SymbolFilter
     market_state = {'volatility': 0.3}
     core = TradingBotCore(market_state)
     symbol_filter = SymbolFilter(market_state)

@@ -3,9 +3,9 @@ import os
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 from utils.logging_setup import setup_logging
-from trading_bot.data_sources.market_data import MarketData
-from trading_bot.strategies.strategy import Strategy
-from trading_bot.analysis.volatility_analyzer import VolatilityAnalyzer
+from data_sources.market_data import MarketData
+from .strategy import Strategy
+from analysis.volatility_analyzer import VolatilityAnalyzer
 
 logger = setup_logging('volatility_strategy')
 
@@ -46,7 +46,7 @@ class VolatilityStrategy(Strategy):
 
 if __name__ == "__main__":
     # Test run
-    from trading_bot.symbol_filter import SymbolFilter
+    from symbol_filter import SymbolFilter
     market_state = {'volatility': 0.3}
     strategy = VolatilityStrategy(market_state)
     symbol_filter = SymbolFilter(market_state)
