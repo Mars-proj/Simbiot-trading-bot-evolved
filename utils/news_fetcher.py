@@ -1,8 +1,13 @@
+import sys
+import os
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+
 from trading_bot.logging_setup import setup_logging
 from dotenv import load_dotenv
 import os
 from newsapi import NewsApiClient
 import asyncio
+from textblob import TextBlob
 
 # Загружаем переменные из .env
 load_dotenv()
@@ -32,7 +37,8 @@ class NewsFetcher:
                     'title': article['title'],
                     'description': article['description'],
                     'published_at': article['publishedAt'],
-                    'source': article['source']['name']
+                    'source': article['source']['name'],
+                    'sentiment': TextBlob(article['description'] or '').sentiment.polarity if article['description'] else 0.0
                 }
                 for article in articles['articles']
             ]
