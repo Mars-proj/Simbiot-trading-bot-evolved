@@ -1,5 +1,6 @@
 from trading_bot.logging_setup import setup_logging
 from trading_bot.utils.cache_manager import CacheManager
+from trading_bot.data_sources.market_data import MarketData
 
 logger = setup_logging('position_manager')
 
@@ -7,6 +8,7 @@ class PositionManager:
     def __init__(self, market_state: dict):
         self.volatility = market_state['volatility']
         self.cache = CacheManager(market_state)
+        self.market_data = MarketData(market_state)
         self.positions = {}
 
     def open_position(self, symbol: str, side: str, quantity: float, entry_price: float) -> dict:
@@ -55,9 +57,27 @@ class PositionManager:
 
 if __name__ == "__main__":
     # Test run
+    from trading_bot.symbol_filter import SymbolFilter
     market_state = {'volatility': 0.3}
     manager = PositionManager(market_state)
-    position = manager.open_position("BTC/USDT", "buy", 0.1, 50000)
-    print(f"Opened position: {position}")
-    closed_position = manager.close_position("BTC/USDT", 51000)
-    print(f"Closed position: {closed_position}")
+    symbol_filter = SymbolFilter(market_state)
+    
+    # Получаем символы
+    symbols = symbol_filter.filter_symbols(manager.market_data.get_symbols('binance'), 'binance')
+    
+    if symbols:
+        # Получаем последние две цены
+        klines = manager.market_data.get_klines(symbols[0], '1h', 2, 'binance')
+        if len(klines) >= 2:
+            entry_price = klines[-2]['close']
+            exit_price = klines[-1]['close']
+            quantity = 0.1  # Можно сделать динамическим, например, на основе баланса
+            
+            position = manager.open_position(symbols[0], "buy", quantity, entry_price)
+            print(f"Opened position for {symbols[0]}: {position}")
+            closed_position = manager.close_position(symbols[0], exit_price)
+            print(f"Closed position for {symbols[0]}: {closed_position}")
+        else:
+            print(f"Not enough klines data for {symbols[0]}")
+    else:
+        print("No symbols available for testing")
