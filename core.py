@@ -1,111 +1,89 @@
-from exchange_factory import ExchangeFactory
-from strategy_manager import StrategyManager
-from data_utils import load_historical_data, preprocess_data
-from notification_manager import notify
-from celery_app import trade_execution_task
-from monitoring import PerformanceMonitor
-from logging_setup import setup_logging
+from trading_bot.logging_setup import setup_logging
+from trading_bot.strategies.strategy_manager import StrategyManager
+from trading_bot.trading.trade_executor import TradeExecutor
+from trading_bot.learning.backtest_manager import BacktestManager
+from trading_bot.monitoring.monitoring import Monitoring
+from trading_bot.data_sources.market_data import MarketData
 
 logger = setup_logging('core')
 
-class TradingBot:
-    def __init__(self, api_key: str, api_secret: str, symbols: list):
-        self.api_key = api_key
-        self.api_secret = api_secret
-        self.exchange, self.exchange_id = ExchangeFactory.create_exchange(api_key, api_secret)
-        self.strategy_manager = StrategyManager(self.exchange_id)
-        self.symbols = symbols
-        self.running = False
-        self.monitor = PerformanceMonitor({"cpu": 80, "memory": 80})
+class TradingBotCore:
+    def __init__(self, market_state: dict):
+        self.volatility = market_state['volatility']
+        self.strategy_manager = StrategyManager(market_state)
+        self.trade_executor = TradeExecutor(market_state)
+        self.backtest_manager = BacktestManager(market_state)
+        self.monitoring = Monitoring(market_state)
+        self.market_data = MarketData(market_state)
 
-    def calculate_trade_amount(self, symbol: str, market_state: dict) -> float:
-        """Calculate the trade amount dynamically based on market conditions."""
+    def run_trading(self, symbol: str, strategy_name: str, account_balance: float, timeframe: str = '1h', limit: int = 30, exchange_name: str = 'binance') -> dict:
+        """Run the trading process for a given strategy."""
         try:
-            # Fetch current price of the symbol
-            ticker = self.exchange.fetch_ticker(symbol)
-            current_price = ticker['last']
-
-            # Calculate minimum trade amount (10 USD + commission)
-            min_usd_amount = 10.0  # Minimum order in USD
-            commission_rate = 0.001  # Assume 0.1% commission for MEXC
-            min_usd_amount_with_commission = min_usd_amount * (1 + commission_rate)  # ~10.01 USD
-            min_amount = min_usd_amount_with_commission / current_price  # Convert to asset amount
-
-            # Calculate maximum trade amount based on market state
-            # Use volatility, order book imbalance, and account balance
-            volatility = market_state['volatility']
-            order_book_imbalance = market_state['order_book_imbalance']
-
-            # Fetch account balance
-            balance = self.exchange.fetch_balance()
-            usdt_balance = balance['free'].get('USDT', 0.0)
-
-            # Dynamic max amount: scale based on volatility and balance
-            # Lower volatility -> higher trade amount; higher volatility -> lower trade amount
-            volatility_factor = max(0.1, min(1.0, 1.0 / (volatility + 0.01)))  # Avoid division by zero
-            max_usdt_amount = usdt_balance * 0.1 * volatility_factor  # Use 10% of balance, scaled by volatility
-
-            # Adjust max amount based on order book imbalance
-            # If buy pressure is high (positive imbalance), increase amount for buy; if sell pressure is high, increase for sell
-            imbalance_factor = 1.0 + abs(order_book_imbalance) * 0.5
-            max_usdt_amount *= imbalance_factor
-
-            # Convert max USD amount to asset amount
-            max_amount = max_usdt_amount / current_price
-
-            # Ensure the amount is between min and max
-            trade_amount = max(min_amount, min(max_amount, max_usdt_amount / current_price))
-
-            # Round to the nearest valid amount (e.g., MEXC requires 5 decimal places for BTC)
-            trade_amount = round(trade_amount, 5)
-
-            logger.info(f"Calculated trade amount for {symbol}: {trade_amount} (min: {min_amount}, max: {max_amount})")
-            return trade_amount
+            # Получаем данные для символа
+            klines = self.market_data.get_klines(symbol, timeframe, limit, exchange_name)
+            
+            # Генерируем сигналы
+            signals = self.strategy_manager.generate_signals(klines)[strategy_name]
+            
+            # Выполняем сделки
+            trades = []
+            for signal in signals:
+                if signal['signal'] in ['buy', 'sell']:
+                    trade = self.trade_executor.execute_trade(
+                        symbol=symbol,
+                        side=signal['signal'],
+                        klines=klines,
+                        entry_price=klines[-1]['close'],  # Последняя цена
+                        stop_loss=klines[-1]['close'] * 0.95,  # Стоп-лосс на 5% ниже
+                        account_balance=account_balance
+                    )
+                    trades.append(trade)
+            
+            logger.info(f"Trading completed: {trades}")
+            return trades
         except Exception as e:
-            logger.error(f"Failed to calculate trade amount for {symbol}: {str(e)}")
+            logger.error(f"Trading failed: {str(e)}")
             raise
 
-    def start(self):
-        self.running = True
-        logger.info(f"Trading bot started on {self.exchange_id}")
-        notify(f"Trading bot started on {self.exchange_id}", channel="telegram")
-        while self.running:
-            try:
-                # Monitor performance
-                self.monitor.monitor()
+    def run_backtest(self, symbols: list, strategies: list, timeframe: str = '1h', limit: int = 30, exchange_name: str = 'binance') -> dict:
+        """Run backtesting for multiple symbols and strategies."""
+        try:
+            results = self.backtest_manager.manage_backtests(symbols, strategies, timeframe, limit, exchange_name)
+            logger.info(f"Backtesting completed: {results}")
+            return results
+        except Exception as e:
+            logger.error(f"Backtesting failed: {str(e)}")
+            raise
 
-                # Analyze market state for dynamic filtering
-                data = load_historical_data(self.exchange, 'BTC/USDT', '1h', {'volatility': 0.02}, limit=100)
-                market_state = self.strategy_manager.generate_signals(data, self.exchange)
+    def run_monitoring(self) -> dict:
+        """Run system monitoring."""
+        try:
+            monitoring_result = self.monitoring.run_monitoring()
+            logger.info(f"Monitoring completed: {monitoring_result}")
+            return monitoring_result
+        except Exception as e:
+            logger.error(f"Monitoring failed: {str(e)}")
+            raise
 
-                # Filter symbols
-                filtered_symbols = self.strategy_manager.filter_symbols(self.symbols, self.exchange, market_state)
-                logger.info(f"Filtered symbols: {filtered_symbols}")
-
-                for symbol in filtered_symbols:
-                    # Load and preprocess data
-                    data = load_historical_data(self.exchange, symbol, '1h', market_state, limit=100)
-                    data = preprocess_data(data)
-
-                    # Generate signals
-                    signals = self.strategy_manager.generate_signals(data, self.exchange)
-                    logger.info(f"Signals for {symbol}: {signals}")
-
-                    # Execute trades asynchronously
-                    for signal in signals:
-                        if signal in ["buy", "sell"]:
-                            # Calculate dynamic trade amount
-                            trade_amount = self.calculate_trade_amount(symbol, market_state)
-                            trade_execution_task.delay(symbol, signal, trade_amount, self.exchange.__dict__, self.api_key, self.api_secret)
-                            logger.info(f"Scheduled {signal} trade for {symbol} with amount {trade_amount}")
-            except Exception as e:
-                logger.error(f"Error in trading loop: {str(e)}")
-                notify(f"Error in trading bot: {str(e)}", channel="telegram")
-
-    def stop(self):
-        self.running = False
-        logger.info("Trading bot stopped")
-        notify("Trading bot stopped", channel="telegram")
-
-    def get_status(self):
-        return "running" if self.running else "stopped"
+if __name__ == "__main__":
+    # Test run
+    from trading_bot.symbol_filter import SymbolFilter
+    market_state = {'volatility': 0.3}
+    core = TradingBotCore(market_state)
+    symbol_filter = SymbolFilter(market_state)
+    
+    # Получаем символы
+    symbols = symbol_filter.filter_symbols(core.market_data.get_symbols('binance'), 'binance')
+    
+    # Run trading
+    trades = core.run_trading(symbols[0], 'bollinger', 10000, '1h', 30, 'binance')
+    print(f"Trades for {symbols[0]}: {trades}")
+    
+    # Run backtest
+    strategies = ['bollinger', 'rsi']
+    backtest_results = core.run_backtest(symbols[:2], strategies, '1h', 30, 'binance')
+    print(f"Backtest results: {backtest_results}")
+    
+    # Run monitoring
+    monitoring_result = core.run_monitoring()
+    print(f"Monitoring result: {monitoring_result}")
