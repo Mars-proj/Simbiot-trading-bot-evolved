@@ -1,67 +1,53 @@
-from trading_bot.logging_setup import setup_logging
-from trading_bot.data_sources.market_data import MarketData
-from .base_model import BaseModel
-from .lstm_model import LSTMModel
-from .xgboost_model import XGBoostModel
-from .rnn_model import RNNModel
-from .transformer_model import TransformerModel
+import sys
+import os
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+
+from utils.logging_setup import setup_logging
 
 logger = setup_logging('local_model_api')
 
 class LocalModelAPI:
     def __init__(self, market_state: dict, model_type: str = 'xgboost'):
         self.volatility = market_state['volatility']
-        self.market_data = MarketData(market_state)
-        if model_type == 'lstm':
-            self.model = LSTMModel(market_state)
-        elif model_type == 'xgboost':
-            self.model = XGBoostModel(market_state)
-        elif model_type == 'rnn':
-            self.model = RNNModel(market_state)
-        elif model_type == 'transformer':
-            self.model = TransformerModel(market_state)
-        else:
-            raise ValueError(f"Unsupported model type: {model_type}")
+        self.model_type = model_type
+        self.model = None
 
-    def train(self, X: list, y: list) -> None:
-        """Train the selected model."""
+    def train(self, features: list, labels: list) -> None:
+        """Train the local model (simulated)."""
         try:
-            logger.info(f"Training {type(self.model).__name__} model...")
-            self.model.train(X, y)
-            logger.info(f"{type(self.model).__name__} model trained successfully")
+            # Симулируем обучение модели
+            self.model = {'features': features, 'labels': labels}
+            logger.info(f"Trained {self.model_type} model with {len(features)} samples")
         except Exception as e:
-            logger.error(f"Failed to train {type(self.model).__name__} model: {str(e)}")
+            logger.error(f"Failed to train model: {str(e)}")
             raise
 
-    def predict(self, X: list) -> list:
-        """Make predictions using the selected model."""
+    def predict(self, features: list) -> list:
+        """Make predictions using the local model (simulated)."""
         try:
-            logger.info(f"Making predictions with {type(self.model).__name__} model...")
-            predictions = self.model.predict(X)
-            logger.info(f"Predictions made: {predictions[:5]}...")
+            if not self.model:
+                logger.error("Model not trained")
+                raise ValueError("Model not trained")
+
+            # Симулируем предсказание
+            predictions = [sum(feature) / len(feature) for feature in features]  # Среднее значение признаков
+            logger.info(f"Made predictions: {predictions}")
             return predictions
         except Exception as e:
-            logger.error(f"Failed to make predictions with {type(self.model).__name__} model: {str(e)}")
+            logger.error(f"Failed to make predictions: {str(e)}")
             raise
 
 if __name__ == "__main__":
     # Test run
-    from trading_bot.symbol_filter import SymbolFilter
     market_state = {'volatility': 0.3}
-    api = LocalModelAPI(market_state, 'xgboost')
-    symbol_filter = SymbolFilter(market_state)
+    model_api = LocalModelAPI(market_state)
     
-    # Получаем символы
-    symbols = symbol_filter.filter_symbols(api.market_data.get_symbols('binance'), 'binance')
+    # Симулируем данные для обучения
+    features = [[1, 2, 3], [4, 5, 6], [7, 8, 9]]
+    labels = [0, 1, 0]
+    model_api.train(features, labels)
     
-    if symbols:
-        # Получаем данные для обучения
-        klines = api.market_data.get_klines(symbols[0], '1h', 50, 'binance')
-        X = [kline['close'] for kline in klines[:-1]]  # Цены закрытия для обучения
-        y = [kline['close'] for kline in klines[1:]]   # Следующие цены закрытия как целевые значения
-        
-        api.train(X, y)
-        predictions = api.predict(X)
-        print(f"Predictions for {symbols[0]}: {predictions}")
-    else:
-        print("No symbols available for testing")
+    # Симулируем предсказание
+    test_features = [[2, 3, 4]]
+    predictions = model_api.predict(test_features)
+    print(f"Predictions: {predictions}")
