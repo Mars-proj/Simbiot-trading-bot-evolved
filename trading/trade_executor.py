@@ -1,4 +1,8 @@
-from trading_bot.logging_setup import setup_logging
+import sys
+import os
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+
+from utils.logging_setup import setup_logging
 from trading_bot.utils.performance_tracker import PerformanceTracker
 from trading_bot.analysis.volatility_analyzer import VolatilityAnalyzer
 
@@ -12,7 +16,7 @@ class TradeExecutor:
         self.min_trade_amount = 10.0  # Минимальная сумма сделки в долларах
         self.commission_rate = 0.001  # Комиссия 0.1%
 
-    def execute_trade(self, symbol: str, side: str, klines: list, entry_price: float, stop_loss: float, account_balance: float, exchange_name: str = 'binance') -> dict:
+    def execute_trade(self, symbol: str, side: str, klines: list, entry_price: float, stop_loss: float, account_balance: float, exchange_name: str = 'mexc') -> dict:
         """Execute a trade with dynamic stop-loss and take-profit."""
         try:
             # Проверяем минимальную сумму сделки

@@ -1,5 +1,5 @@
 import tweepy
-from trading_bot.logging_setup import setup_logging
+from .logging_setup import setup_logging
 from dotenv import load_dotenv
 import os
 import asyncio

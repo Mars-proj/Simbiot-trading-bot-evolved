@@ -1,4 +1,8 @@
-from trading_bot.logging_setup import setup_logging
+import sys
+import os
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+
+from utils.logging_setup import setup_logging
 from trading_bot.data_sources.market_data import MarketData
 from trading_bot.strategies.strategy import Strategy
 from trading_bot.analysis.volatility_analyzer import VolatilityAnalyzer
@@ -12,11 +16,11 @@ class VolatilityStrategy(Strategy):
         self.market_data = MarketData(market_state)
         self.volatility_analyzer = VolatilityAnalyzer(market_state)
 
-    def generate_signal(self, symbol: str, timeframe: str = '1h', limit: int = 30, exchange_name: str = 'binance') -> str:
+    async def generate_signal(self, symbol: str, timeframe: str = '1h', limit: int = 30, exchange_name: str = 'mexc') -> str:
         """Generate a trading signal based on volatility strategy with dynamic thresholds."""
         try:
             # Получаем данные с биржи
-            klines = self.market_data.get_klines(symbol, timeframe, limit, exchange_name)
+            klines = await self.market_data.get_klines(symbol, timeframe, limit, exchange_name)
             if len(klines) < self.lookback_period:
                 logger.warning(f"Not enough data for {symbol} to calculate volatility")
                 return "hold"
@@ -48,10 +52,11 @@ if __name__ == "__main__":
     symbol_filter = SymbolFilter(market_state)
     
     # Получаем символы
-    symbols = symbol_filter.filter_symbols(strategy.market_data.get_symbols('mexc'), 'mexc')
+    symbols = asyncio.run(strategy.market_data.get_symbols('mexc'))
+    symbols = symbol_filter.filter_symbols(symbols, 'mexc')
     
     if symbols:
-        signal = strategy.generate_signal(symbols[0], '1h', 30, 'mexc')
+        signal = asyncio.run(strategy.generate_signal(symbols[0], '1h', 30, 'mexc'))
         print(f"Signal for {symbols[0]}: {signal}")
     else:
         print("No symbols available for testing")

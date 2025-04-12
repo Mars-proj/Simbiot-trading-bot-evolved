@@ -1,6 +1,10 @@
+import sys
+import os
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+
 import asyncio
 import aiohttp
-from trading_bot.logging_setup import setup_logging
+from utils.logging_setup import setup_logging
 from dotenv import load_dotenv
 import os
 import hmac

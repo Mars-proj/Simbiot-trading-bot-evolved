@@ -1,6 +1,10 @@
+import sys
+import os
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+
 import time
 from typing import Any
-from trading_bot.logging_setup import setup_logging
+from .logging_setup import setup_logging
 import redis
 import json
 

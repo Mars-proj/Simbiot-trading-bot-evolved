@@ -1,4 +1,8 @@
-from trading_bot.logging_setup import setup_logging
+import sys
+import os
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '.')))
+
+from utils.logging_setup import setup_logging
 from trading_bot.strategies.strategy_manager import StrategyManager
 from trading_bot.trading.trade_executor import TradeExecutor
 from trading_bot.learning.backtest_manager import BacktestManager
@@ -18,7 +22,7 @@ class TradingBotCore:
         self.market_data = MarketData(market_state)
         self.volatility_analyzer = VolatilityAnalyzer(market_state)
 
-    def run_trading(self, symbol: str, strategy_name: str, account_balance: float, timeframe: str = '1h', limit: int = 30, exchange_name: str = 'binance') -> dict:
+    def run_trading(self, symbol: str, strategy_name: str, account_balance: float, timeframe: str = '1h', limit: int = 30, exchange_name: str = 'mexc') -> dict:
         """Run the trading process for a given strategy."""
         try:
             # Получаем данные для символа
@@ -51,7 +55,7 @@ class TradingBotCore:
             logger.error(f"Trading failed: {str(e)}")
             raise
 
-    def run_backtest(self, symbols: list, strategies: list, timeframe: str = '1h', limit: int = 30, exchange_name: str = 'binance') -> dict:
+    def run_backtest(self, symbols: list, strategies: list, timeframe: str = '1h', limit: int = 30, exchange_name: str = 'mexc') -> dict:
         """Run backtesting for multiple symbols and strategies."""
         try:
             results = self.backtest_manager.manage_backtests(symbols, strategies, timeframe, limit, exchange_name)

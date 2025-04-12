@@ -1,6 +1,10 @@
+import sys
+import os
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+
 import asyncio
 import aiohttp
-from trading_bot.logging_setup import setup_logging
+from utils.logging_setup import setup_logging
 from dotenv import load_dotenv
 import os
 import hmac
@@ -97,7 +101,6 @@ if __name__ == "__main__":
     market_state = {'volatility': 0.3}
     mexc_api = MEXCAPI(market_state)
     
-    # Тестируем асинхронные методы
     async def main():
         symbols = await mexc_api.get_symbols()
         print(f"Available symbols: {symbols[:5]}")  # Первые 5 символов

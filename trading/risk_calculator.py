@@ -1,4 +1,8 @@
-from trading_bot.logging_setup import setup_logging
+import sys
+import os
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+
+from utils.logging_setup import setup_logging
 from trading_bot.utils.performance_tracker import PerformanceTracker
 from trading_bot.analysis.volatility_analyzer import VolatilityAnalyzer
 
@@ -12,7 +16,7 @@ class RiskCalculator:
         self.min_trade_amount = 10.0  # Минимальная сумма сделки в долларах
         self.commission_rate = 0.001  # Комиссия 0.1%
 
-    def calculate_risk(self, symbol: str, account_balance: float, entry_price: float, exchange_name: str = 'binance') -> dict:
+    def calculate_risk(self, symbol: str, account_balance: float, entry_price: float, exchange_name: str = 'mexc') -> dict:
         """Calculate risk parameters dynamically based on market conditions."""
         try:
             # Получаем волатильность символа
@@ -41,4 +45,3 @@ class RiskCalculator:
         except Exception as e:
             logger.error(f"Failed to calculate risk for {symbol}: {str(e)}")
             raise
-

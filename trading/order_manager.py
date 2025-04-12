@@ -1,63 +1,36 @@
-from trading_bot.logging_setup import setup_logging
-from trading_bot.utils.cache_manager import CacheManager
-from trading_bot.data_sources.market_data import MarketData
+import sys
+import os
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+
+from utils.logging_setup import setup_logging
+from trading_bot.utils.performance_tracker import PerformanceTracker
 
 logger = setup_logging('order_manager')
 
 class OrderManager:
     def __init__(self, market_state: dict):
         self.volatility = market_state['volatility']
-        self.cache = CacheManager(market_state)
-        self.market_data = MarketData(market_state)
-        self.min_order_size = 10.0  # Минимальный размер ордера в USD
+        self.performance_tracker = PerformanceTracker(market_state)
 
-    def place_order(self, symbol: str, side: str, quantity: float, price: float) -> dict:
-        """Place a new order."""
+    def manage_orders(self, symbol: str, trades: list) -> list:
+        """Manage open orders based on current market conditions."""
         try:
-            # Проверяем минимальный размер ордера
-            order_value = quantity * price
-            if order_value < self.min_order_size:
-                logger.warning(f"Order value {order_value} USD is below minimum {self.min_order_size} USD")
-                return {'status': 'rejected', 'reason': 'below minimum order size'}
-
-            # Динамическая корректировка количества на основе волатильности
-            adjusted_quantity = quantity * (1 - self.volatility / 2)
+            active_orders = []
+            for trade in trades:
+                # Симулируем управление ордерами
+                order = {
+                    'symbol': symbol,
+                    'side': trade['side'],
+                    'status': 'active',
+                    'entry_price': trade['entry_price'],
+                    'amount': trade['amount']
+                }
+                active_orders.append(order)
+                logger.info(f"Managing order for {symbol}: {order}")
             
-            order = {
-                'symbol': symbol,
-                'side': side,
-                'quantity': adjusted_quantity,
-                'price': price,
-                'status': 'placed'
-            }
-            
-            # Сохраняем ордер в кэше
-            self.cache.set(f"order_{symbol}_{side}_{price}", order)
-            logger.info(f"Placed order: {order}")
-            return order
+            self.performance_tracker.record_request()
+            return active_orders
         except Exception as e:
-            logger.error(f"Failed to place order: {str(e)}")
+            logger.error(f"Failed to manage orders for {symbol}: {str(e)}")
+            self.performance_tracker.record_error()
             raise
-
-if __name__ == "__main__":
-    # Test run
-    from trading_bot.symbol_filter import SymbolFilter
-    market_state = {'volatility': 0.3}
-    manager = OrderManager(market_state)
-    symbol_filter = SymbolFilter(market_state)
-    
-    # Получаем символы
-    symbols = symbol_filter.filter_symbols(manager.market_data.get_symbols('binance'), 'binance')
-    
-    if symbols:
-        # Получаем последнюю цену
-        klines = manager.market_data.get_klines(symbols[0], '1h', 1, 'binance')
-        if klines:
-            price = klines[-1]['close']
-            quantity = 0.1  # Можно сделать динамическим, например, на основе баланса
-            order = manager.place_order(symbols[0], "buy", quantity, price)
-            print(f"Order for {symbols[0]}: {order}")
-        else:
-            print(f"No klines data for {symbols[0]}")
-    else:
-        print("No symbols available for testing")

@@ -1,5 +1,9 @@
+import sys
+import os
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+
 import asyncio
-from trading_bot.logging_setup import setup_logging
+from utils.logging_setup import setup_logging
 from .binance_api import BinanceAPI
 from .kraken_api import KrakenAPI
 from .mexc_api import MEXCAPI

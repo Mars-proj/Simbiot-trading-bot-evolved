@@ -1,5 +1,9 @@
+import sys
+import os
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+
 import asyncio
-from trading_bot.logging_setup import setup_logging
+from utils.logging_setup import setup_logging
 from trading_bot.data_sources.market_data import MarketData
 from trading_bot.strategies.strategy import Strategy
 from trading_bot.models.local_model_api import LocalModelAPI
@@ -50,7 +54,7 @@ class MLStrategy(Strategy):
             logger.error(f"Failed to fetch sentiment features for {symbol}: {str(e)}")
             return {'news_sentiment': 0.0, 'tweet_sentiment': 0.0}
 
-    async def generate_signal(self, symbol: str, timeframe: str = '1h', limit: int = 30, exchange_name: str = 'binance') -> str:
+    async def generate_signal(self, symbol: str, timeframe: str = '1h', limit: int = 30, exchange_name: str = 'mexc') -> str:
         """Generate a trading signal using a machine learning model with sentiment features."""
         try:
             # Получаем данные с биржи
@@ -98,5 +102,4 @@ if __name__ == "__main__":
         signal = asyncio.run(strategy.generate_signal(symbols[0], '1h', 30, 'mexc'))
         print(f"Signal for {symbols[0]}: {signal}")
     else:
-        print("No symbols available for testing")xy
-
+        print("No symbols available for testing")
