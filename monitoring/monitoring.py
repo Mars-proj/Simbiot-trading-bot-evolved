@@ -1,32 +1,38 @@
-import psutil
-import time
-from notification_manager import notify
-from logging_setup import setup_logging
+from trading_bot.logging_setup import setup_logging
+from .health_checker import HealthChecker
+from .performance_monitor import PerformanceMonitor
 
 logger = setup_logging('monitoring')
 
-class PerformanceMonitor:
-    def __init__(self, alert_thresholds: dict):
-        self.alert_thresholds = alert_thresholds  # e.g., {"cpu": 80, "memory": 80}
+class Monitoring:
+    def __init__(self, market_state: dict):
+        self.volatility = market_state['volatility']
+        self.health_checker = HealthChecker(market_state)
+        self.performance_monitor = PerformanceMonitor(market_state)
 
-    def monitor(self):
-        """Monitor system performance and send alerts if thresholds are exceeded."""
+    def run_monitoring(self):
+        """Run full system monitoring."""
         try:
-            cpu_usage = psutil.cpu_percent(interval=1)
-            memory_usage = psutil.virtual_memory().percent
-
-            if cpu_usage > self.alert_thresholds["cpu"]:
-                message = f"High CPU usage detected: {cpu_usage}%"
-                notify(message, channel="telegram")
-                logger.warning(message)
-
-            if memory_usage > self.alert_thresholds["memory"]:
-                message = f"High memory usage detected: {memory_usage}%"
-                notify(message, channel="telegram")
-                logger.warning(message)
-
-            logger.info(f"Performance: CPU={cpu_usage}%, Memory={memory_usage}%")
-            return {"cpu_usage": cpu_usage, "memory_usage": memory_usage}
+            # Проверяем здоровье системы
+            health_status = self.health_checker.check_health()
+            
+            # Мониторим производительность
+            performance_metrics = self.performance_monitor.monitor()
+            
+            monitoring_result = {
+                'health_status': health_status,
+                'performance_metrics': performance_metrics
+            }
+            
+            logger.info(f"Monitoring result: {monitoring_result}")
+            return monitoring_result
         except Exception as e:
-            logger.error(f"Monitoring failed: {str(e)}")
+            logger.error(f"Failed to run monitoring: {str(e)}")
             raise
+
+if __name__ == "__main__":
+    # Test run
+    market_state = {'volatility': 0.3}
+    monitoring = Monitoring(market_state)
+    result = monitoring.run_monitoring()
+    print(f"Monitoring result: {result}")
