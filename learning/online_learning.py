@@ -20,11 +20,20 @@ class OnlineLearning:
             'xgboost': LocalModelAPI(market_state),
             'transformer': TransformerModel(),
         }
-        self.current_model = 'xgboost'  # Модель по умолчанию
+        self.current_model = 'xgboost'
 
     async def select_model(self, symbol: str, timeframe: str, limit: int, exchange_name: str) -> str:
         """Select the best model based on market conditions (volatility)."""
         try:
+            # Адаптируем timeframe
+            supported_timeframes = await self.market_data.get_supported_timeframes(exchange_name, symbol)
+            if not supported_timeframes:
+                logger.error(f"No supported timeframes for {exchange_name}, using default '1m'")
+                timeframe = '1m'
+            elif timeframe not in supported_timeframes:
+                logger.warning(f"Timeframe {timeframe} not supported on {exchange_name}, using {supported_timeframes[0]}")
+                timeframe = supported_timeframes[0]
+
             volatility = await self.volatility_analyzer.analyze_volatility(symbol, timeframe, limit, exchange_name)
             if volatility > 0.5:
                 self.current_model = 'transformer'
@@ -40,11 +49,18 @@ class OnlineLearning:
     async def retrain(self, symbol: str, timeframe: str, limit: int, exchange_name: str):
         """Retrain the selected model with new data for a single symbol."""
         try:
-            # Выбираем модель на основе волатильности
+            # Адаптируем timeframe
+            supported_timeframes = await self.market_data.get_supported_timeframes(exchange_name, symbol)
+            if not supported_timeframes:
+                logger.error(f"No supported timeframes for {exchange_name}, using default '1m'")
+                timeframe = '1m'
+            elif timeframe not in supported_timeframes:
+                logger.warning(f"Timeframe {timeframe} not supported on {exchange_name}, using {supported_timeframes[0]}")
+                timeframe = supported_timeframes[0]
+
             await self.select_model(symbol, timeframe, limit, exchange_name)
             model = self.models[self.current_model]
 
-            # Получаем данные для обучения
             klines = await self.market_data.get_klines(symbol, timeframe, limit, exchange_name)
             if not klines:
                 logger.warning(f"No klines data for {symbol}, skipping retraining")
@@ -53,7 +69,6 @@ class OnlineLearning:
             data = np.array([[kline['open'], kline['high'], kline['low'], kline['close'], kline['volume']] for kline in klines])
             labels = np.array([1 if kline['close'] > kline['open'] else 0 for kline in klines])
 
-            # Обучаем только выбранную модель
             try:
                 model.train(data, labels)
                 logger.info(f"Model {self.current_model} retrained successfully with {len(data)} data points for {symbol}")
@@ -66,7 +81,15 @@ class OnlineLearning:
     async def predict(self, symbol: str, timeframe: str, limit: int, exchange_name: str) -> list:
         """Make predictions using the selected model."""
         try:
-            # Убедимся, что модель выбрана
+            # Адаптируем timeframe
+            supported_timeframes = await self.market_data.get_supported_timeframes(exchange_name, symbol)
+            if not supported_timeframes:
+                logger.error(f"No supported timeframes for {exchange_name}, using default '1m'")
+                timeframe = '1m'
+            elif timeframe not in supported_timeframes:
+                logger.warning(f"Timeframe {timeframe} not supported on {exchange_name}, using {supported_timeframes[0]}")
+                timeframe = supported_timeframes[0]
+
             await self.select_model(symbol, timeframe, limit, exchange_name)
             model = self.models[self.current_model]
 

@@ -15,6 +15,15 @@ class VolatilityAnalyzer:
     async def analyze_volatility(self, symbol: str, timeframe: str, limit: int, exchange_name: str) -> float:
         """Analyze the volatility of a symbol based on historical klines."""
         try:
+            # Адаптируем timeframe
+            supported_timeframes = await self.market_data.get_supported_timeframes(exchange_name, symbol)
+            if not supported_timeframes:
+                logger.error(f"No supported timeframes for {exchange_name}, using default '1m'")
+                timeframe = '1m'
+            elif timeframe not in supported_timeframes:
+                logger.warning(f"Timeframe {timeframe} not supported on {exchange_name}, using {supported_timeframes[0]}")
+                timeframe = supported_timeframes[0]
+
             klines = await self.market_data.get_klines(symbol, timeframe, limit, exchange_name)
             if not klines:
                 logger.warning(f"No klines data for {symbol} on {exchange_name}, returning default volatility")

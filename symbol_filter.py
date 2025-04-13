@@ -10,13 +10,42 @@ class SymbolFilter:
     def __init__(self, market_data, market_state: dict):
         self.market_data = market_data
         self.market_state = market_state
-        # Динамические пороги из market_state или значения по умолчанию
+        self.volatility_analyzer = market_data.volatility_analyzer  # Используем volatility_analyzer из market_data
         self.filters = {
-            'min_liquidity': self.market_state.get('min_liquidity', 1000),
-            'max_volatility': self.market_state.get('max_volatility', 0.5),
-            'liquidity_period': self.market_state.get('liquidity_period', 240)  # 4 часа (240 минут)
+            'min_liquidity': self.market_state.get('min_liquidity', 500),
+            'max_volatility': self.market_state.get('max_volatility', 1.0),
+            'liquidity_period': self.market_state.get('liquidity_period', 240)  # Значение по умолчанию, будет переопределено
         }
         logger.info(f"Set up filters: {self.filters}")
+
+    async def determine_liquidity_period(self, symbols: list, exchange_name: str, timeframe: str) -> int:
+        """Determine the optimal liquidity period based on market volatility."""
+        try:
+            # Выбираем 5 случайных символов для анализа
+            sample_symbols = symbols[:5] if len(symbols) >= 5 else symbols
+            volatilities = []
+
+            for symbol in sample_symbols:
+                volatility = await self.volatility_analyzer.analyze_volatility(symbol, timeframe, 60, exchange_name)
+                volatilities.append(volatility)
+
+            # Считаем среднюю волатильность
+            avg_volatility = sum(volatilities) / len(volatilities) if volatilities else 0.0
+            logger.info(f"Average market volatility: {avg_volatility}")
+
+            # Выбираем период на основе волатильности
+            if avg_volatility > 0.5:
+                period = 60  # 1 час
+            elif avg_volatility >= 0.2:
+                period = 240  # 4 часа
+            else:
+                period = 1440  # 24 часа
+
+            logger.info(f"Selected liquidity period of {period} candles based on market volatility: {avg_volatility}")
+            return period
+        except Exception as e:
+            logger.error(f"Failed to determine liquidity period, using default (240): {str(e)}")
+            return 240
 
     async def filter_symbols(self, symbols: list, exchange_name: str, timeframe: str) -> list:
         """Filter symbols based on liquidity and volatility using the specified timeframe."""
@@ -30,23 +59,23 @@ class SymbolFilter:
             logger.warning(f"Timeframe {timeframe} not supported on {exchange_name}. Using {supported_timeframes[0]} instead.")
             timeframe = supported_timeframes[0]
 
+        # Динамически выбираем период анализа ликвидности
+        self.filters['liquidity_period'] = await self.determine_liquidity_period(symbols, exchange_name, timeframe)
+
         for symbol in symbols:
             try:
-                # Запрашиваем свечи за указанный период (по умолчанию 4 часа)
                 klines = await self.market_data.get_klines(symbol, timeframe, self.filters['liquidity_period'], exchange_name)
                 if not klines:
                     logger.warning(f"No klines data for {symbol} on {exchange_name} with timeframe {timeframe}, skipping")
                     continue
 
-                # Считаем среднюю ликвидность за указанный период
                 total_volume = sum(kline['volume'] for kline in klines)
                 latest_price = klines[-1]['close']
-                liquidity = total_volume * latest_price / self.filters['liquidity_period']  # Средняя ликвидность за минуту
+                liquidity = total_volume * latest_price / self.filters['liquidity_period']
                 if liquidity < self.filters['min_liquidity']:
                     logger.debug(f"Skipping {symbol} due to low liquidity: {liquidity}")
                     continue
 
-                # Считаем волатильность за указанный период
                 prices = [kline['close'] for kline in klines]
                 volatility = (max(prices) - min(prices)) / min(prices) if min(prices) != 0 else float('inf')
                 if volatility > self.filters['max_volatility']:
