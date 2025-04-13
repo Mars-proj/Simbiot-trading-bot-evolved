@@ -6,7 +6,7 @@ import asyncio
 from utils.logging_setup import setup_logging
 from .binance_api import BinanceAPI
 from .kraken_api import KrakenAPI
-from .mexc_api import MexcAPI
+from .mexc_api import MEXCAPI  # Исправлено с MexcAPI на MEXCAPI
 from .bitstamp_api import BitstampAPI
 from .bybit_api import BybitAPI
 from .coinbase_api import CoinbaseAPI
@@ -27,7 +27,7 @@ class MarketData:
         exchange_classes = {
             'binance': BinanceAPI,
             'kraken': KrakenAPI,
-            'mexc': MexcAPI,
+            'mexc': MEXCAPI,  # Исправлено с MexcAPI на MEXCAPI
             'bitstamp': BitstampAPI,
             'bybit': BybitAPI,
             'coinbase': CoinbaseAPI,
