@@ -11,7 +11,7 @@ class SymbolFilter:
     def __init__(self, market_data, market_state: dict):
         self.market_data = market_data
         self.market_state = market_state
-        self.volatility_analyzer = VolatilityAnalyzer(market_state, market_data)  # Создаём собственный экземпляр
+        self.volatility_analyzer = VolatilityAnalyzer(market_state, market_data)
         self.filters = {
             'min_liquidity': self.market_state.get('min_liquidity', 500),
             'max_volatility': self.market_state.get('max_volatility', 1.0),
@@ -22,7 +22,6 @@ class SymbolFilter:
     async def determine_liquidity_period(self, symbols: list, exchange_name: str, timeframe: str) -> int:
         """Determine the optimal liquidity period based on market volatility."""
         try:
-            # Выбираем 5 случайных символов для анализа
             sample_symbols = symbols[:5] if len(symbols) >= 5 else symbols
             volatilities = []
 
@@ -30,17 +29,15 @@ class SymbolFilter:
                 volatility = await self.volatility_analyzer.analyze_volatility(symbol, timeframe, 60, exchange_name)
                 volatilities.append(volatility)
 
-            # Считаем среднюю волатильность
             avg_volatility = sum(volatilities) / len(volatilities) if volatilities else 0.0
             logger.info(f"Average market volatility: {avg_volatility}")
 
-            # Выбираем период на основе волатильности
             if avg_volatility > 0.5:
                 period = 60  # 1 час
             elif avg_volatility >= 0.2:
                 period = 240  # 4 часа
             else:
-                period = 1440  # 24 часа
+                period = 500  # Ограничиваем максимум до 500 свечей (MEXC API limit)
 
             logger.info(f"Selected liquidity period of {period} candles based on market volatility: {avg_volatility}")
             return period

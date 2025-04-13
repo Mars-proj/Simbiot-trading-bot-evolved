@@ -19,8 +19,9 @@ class MarketData:
     def __init__(self, market_state: dict):
         self.volatility = market_state['volatility']
         self.exchanges = {}
-        self.supported_timeframes = {}  # Для хранения поддерживаемых таймфреймов для каждой биржи
+        self.supported_timeframes = {}
         self._initialize_exchanges()
+        self._supported_timeframes_list = ['1m', '5m', '15m', '30m', '4h', '8h', '1d', '1M']  # Известные поддерживаемые таймфреймы для MEXC
 
     def _initialize_exchanges(self):
         """Initialize all supported exchanges."""
@@ -55,13 +56,10 @@ class MarketData:
         if exchange_name in self.supported_timeframes:
             return self.supported_timeframes[exchange_name]
 
-        # Список возможных таймфреймов для тестирования
-        possible_timeframes = ['1m', '3m', '5m', '15m', '30m', '1h', '2h', '4h', '6h', '8h', '12h', '1d', '3d', '1w', '1M']
         supported = []
-
-        for timeframe in possible_timeframes:
+        # Используем только известные поддерживаемые таймфреймы для MEXC
+        for timeframe in self._supported_timeframes_list:
             try:
-                # Пробуем получить одну свечу для теста
                 klines = await self.exchanges[exchange_name].get_klines(symbol, timeframe, 1)
                 if klines and isinstance(klines, list) and len(klines) > 0:
                     supported.append(timeframe)
@@ -83,7 +81,7 @@ class MarketData:
             symbols = await self.exchanges[exchange_name].get_symbols()
             if not symbols:
                 logger.warning(f"No symbols available on {exchange_name}. Skipping this exchange.")
-                del self.exchanges[exchange_name]  # Удаляем биржу из списка, если символы не получены
+                del self.exchanges[exchange_name]
             return symbols
         except Exception as e:
             logger.error(f"Failed to fetch symbols from {exchange_name}: {str(e)}")
