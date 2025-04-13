@@ -4,7 +4,6 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 import asyncio
 from utils.logging_setup import setup_logging
-from data_sources.market_data import MarketData
 from .strategy import Strategy
 from models.local_model_api import LocalModelAPI
 from utils.news_fetcher import NewsFetcher
@@ -14,11 +13,11 @@ from textblob import TextBlob
 logger = setup_logging('ml_strategy')
 
 class MLStrategy(Strategy):
-    def __init__(self, market_state: dict):
+    def __init__(self, market_state: dict, market_data):
         super().__init__(market_state)
         self.model = LocalModelAPI(market_state, 'xgboost')
         self.lookback_period = 20
-        self.market_data = MarketData(market_state)
+        self.market_data = market_data
         self.news_fetcher = NewsFetcher(market_state)
         self.social_media_fetcher = SocialMediaFetcher(market_state)
 
@@ -90,10 +89,11 @@ class MLStrategy(Strategy):
 
 if __name__ == "__main__":
     # Test run
-    from symbol_filter import SymbolFilter
+    from data_sources.market_data import MarketData
     market_state = {'volatility': 0.3}
-    strategy = MLStrategy(market_state)
-    symbol_filter = SymbolFilter(market_state)
+    market_data = MarketData(market_state)
+    strategy = MLStrategy(market_state, market_data=market_data)
+    symbol_filter = SymbolFilter(market_state, market_data=market_data)
     
     # Получаем символы
     symbols = asyncio.run(strategy.market_data.get_symbols('mexc'))

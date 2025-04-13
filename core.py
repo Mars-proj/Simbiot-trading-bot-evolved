@@ -13,14 +13,14 @@ from analysis.volatility_analyzer import VolatilityAnalyzer
 logger = setup_logging('core')
 
 class TradingBotCore:
-    def __init__(self, market_state: dict):
+    def __init__(self, market_state: dict, market_data: MarketData):
         self.volatility = market_state['volatility']
-        self.strategy_manager = StrategyManager(market_state)
+        self.strategy_manager = StrategyManager(market_state, market_data=market_data)
         self.trade_executor = TradeExecutor(market_state)
-        self.backtest_manager = BacktestManager(market_state)
+        self.backtest_manager = BacktestManager(market_state, market_data=market_data)
         self.monitoring = Monitoring(market_state)
-        self.market_data = MarketData(market_state)
-        self.volatility_analyzer = VolatilityAnalyzer(market_state)
+        self.market_data = market_data
+        self.volatility_analyzer = VolatilityAnalyzer(market_state, market_data=market_data)
 
     def run_trading(self, symbol: str, strategy_name: str, account_balance: float, timeframe: str = '1h', limit: int = 30, exchange_name: str = 'mexc') -> dict:
         """Run the trading process for a given strategy."""
@@ -79,8 +79,9 @@ if __name__ == "__main__":
     # Test run
     from symbol_filter import SymbolFilter
     market_state = {'volatility': 0.3}
-    core = TradingBotCore(market_state)
-    symbol_filter = SymbolFilter(market_state)
+    market_data = MarketData(market_state)
+    core = TradingBotCore(market_state, market_data=market_data)
+    symbol_filter = SymbolFilter(market_state, market_data=market_data)
     
     # Получаем символы
     symbols = symbol_filter.filter_symbols(core.market_data.get_symbols('mexc'), 'mexc')

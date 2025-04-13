@@ -9,9 +9,9 @@ from .backtester import Backtester
 logger = setup_logging('backtest_manager')
 
 class BacktestManager:
-    def __init__(self, market_state: dict):
+    def __init__(self, market_state: dict, market_data):
         self.volatility = market_state['volatility']
-        self.backtester = Backtester(market_state)
+        self.backtester = Backtester(market_state, market_data=market_data)
 
     async def manage_backtests(self, symbols: list, strategies: list, timeframe: str = '1h', limit: int = 30, exchange_name: str = 'mexc') -> dict:
         """Manage backtesting for multiple symbols and strategies."""
@@ -32,9 +32,11 @@ class BacktestManager:
 if __name__ == "__main__":
     # Test run
     from symbol_filter import SymbolFilter
+    from data_sources.market_data import MarketData
     market_state = {'volatility': 0.3}
-    manager = BacktestManager(market_state)
-    symbol_filter = SymbolFilter(market_state)
+    market_data = MarketData(market_state)
+    manager = BacktestManager(market_state, market_data=market_data)
+    symbol_filter = SymbolFilter(market_state, market_data=market_data)
     
     # Получаем символы
     symbols = asyncio.run(symbol_filter.filter_symbols(['BTC/USDT', 'ETH/USDT'], 'mexc'))

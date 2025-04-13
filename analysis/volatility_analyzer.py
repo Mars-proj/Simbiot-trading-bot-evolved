@@ -3,14 +3,13 @@ import os
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 from utils.logging_setup import setup_logging
-from data_sources.market_data import MarketData
 
 logger = setup_logging('volatility_analyzer')
 
 class VolatilityAnalyzer:
-    def __init__(self, market_state: dict):
+    def __init__(self, market_state: dict, market_data):
         self.volatility = market_state['volatility']
-        self.market_data = MarketData(market_state)
+        self.market_data = market_data
 
     async def analyze_volatility(self, symbol: str, exchange_name: str = 'mexc') -> float:
         """Analyze the volatility of a symbol over a specified period."""
@@ -31,8 +30,10 @@ class VolatilityAnalyzer:
 
 if __name__ == "__main__":
     # Test run
+    from data_sources.market_data import MarketData
     market_state = {'volatility': 0.3}
-    analyzer = VolatilityAnalyzer(market_state)
+    market_data = MarketData(market_state)
+    analyzer = VolatilityAnalyzer(market_state, market_data=market_data)
     
     async def main():
         volatility = await analyzer.analyze_volatility("BTC/USDT", "mexc")

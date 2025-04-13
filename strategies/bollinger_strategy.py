@@ -3,7 +3,6 @@ import os
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 from utils.logging_setup import setup_logging
-from data_sources.market_data import MarketData
 from .strategy import Strategy
 from analysis.volatility_analyzer import VolatilityAnalyzer
 import statistics
@@ -11,11 +10,11 @@ import statistics
 logger = setup_logging('bollinger_strategy')
 
 class BollingerStrategy(Strategy):
-    def __init__(self, market_state: dict):
+    def __init__(self, market_state: dict, market_data):
         super().__init__(market_state)
         self.bollinger_period = 20
-        self.market_data = MarketData(market_state)
-        self.volatility_analyzer = VolatilityAnalyzer(market_state)
+        self.market_data = market_data
+        self.volatility_analyzer = VolatilityAnalyzer(market_state, market_data=market_data)
 
     def calculate_bollinger_bands(self, closes: list, symbol: str, exchange_name: str) -> tuple:
         """Calculate Bollinger Bands with dynamic standard deviation multiplier."""
@@ -64,10 +63,11 @@ class BollingerStrategy(Strategy):
 
 if __name__ == "__main__":
     # Test run
-    from symbol_filter import SymbolFilter
+    from data_sources.market_data import MarketData
     market_state = {'volatility': 0.3}
-    strategy = BollingerStrategy(market_state)
-    symbol_filter = SymbolFilter(market_state)
+    market_data = MarketData(market_state)
+    strategy = BollingerStrategy(market_state, market_data=market_data)
+    symbol_filter = SymbolFilter(market_state, market_data=market_data)
     
     # Получаем символы
     symbols = asyncio.run(strategy.market_data.get_symbols('mexc'))

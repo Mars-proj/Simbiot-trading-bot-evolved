@@ -3,15 +3,14 @@ import os
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '.')))
 
 from utils.logging_setup import setup_logging
-from data_sources.market_data import MarketData
 
 logger = setup_logging('symbol_filter')
 
 class SymbolFilter:
-    def __init__(self, market_state: dict):
+    def __init__(self, market_state: dict, market_data):
         self.volatility = market_state['volatility']
         self.filters = {}
-        self.market_data = MarketData(market_state)
+        self.market_data = market_data
 
     def setup_default_filters(self, min_liquidity: float = 1000000, max_volatility: float = 0.5) -> None:
         """Set up default filters for symbol selection."""
@@ -58,8 +57,10 @@ class SymbolFilter:
 
 if __name__ == "__main__":
     # Test run
+    from data_sources.market_data import MarketData
     market_state = {'volatility': 0.3}
-    symbol_filter = SymbolFilter(market_state)
+    market_data = MarketData(market_state)
+    symbol_filter = SymbolFilter(market_state, market_data=market_data)
     symbols = ['BTC/USDT', 'ETH/USDT', 'XRP/USDT']
     filtered = symbol_filter.filter_symbols(symbols, 'mexc')
     print(f"Filtered symbols: {filtered}")

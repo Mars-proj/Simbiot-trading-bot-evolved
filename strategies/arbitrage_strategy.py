@@ -4,15 +4,14 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 import asyncio
 from utils.logging_setup import setup_logging
-from data_sources.market_data import MarketData
 from .strategy import Strategy
 
 logger = setup_logging('arbitrage_strategy')
 
 class ArbitrageStrategy(Strategy):
-    def __init__(self, market_state: dict):
+    def __init__(self, market_state: dict, market_data):
         super().__init__(market_state)
-        self.market_data = MarketData(market_state)
+        self.market_data = market_data
         self.exchanges = ['mexc', 'binance']  # Биржи для арбитража
 
     async def find_arbitrage_opportunity(self, symbol: str) -> dict:
@@ -73,10 +72,11 @@ class ArbitrageStrategy(Strategy):
 
 if __name__ == "__main__":
     # Test run
-    from symbol_filter import SymbolFilter
+    from data_sources.market_data import MarketData
     market_state = {'volatility': 0.3}
-    strategy = ArbitrageStrategy(market_state)
-    symbol_filter = SymbolFilter(market_state)
+    market_data = MarketData(market_state)
+    strategy = ArbitrageStrategy(market_state, market_data=market_data)
+    symbol_filter = SymbolFilter(market_state, market_data=market_data)
     
     # Получаем символы
     symbols = asyncio.run(strategy.market_data.get_symbols('mexc'))
@@ -87,4 +87,3 @@ if __name__ == "__main__":
         print(f"Signal for {symbols[0]}: {signal}")
     else:
         print("No symbols available for testing")
-

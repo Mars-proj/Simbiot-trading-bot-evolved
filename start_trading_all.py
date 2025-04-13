@@ -13,9 +13,9 @@ logger = setup_logging('start_trading_all')
 class StartTradingAll:
     def __init__(self, market_state: dict):
         self.volatility = market_state['volatility']
-        self.core = TradingBotCore(market_state)
-        self.symbol_filter = SymbolFilter(market_state)
         self.market_data = MarketData(market_state)
+        self.core = TradingBotCore(market_state, market_data=self.market_data)
+        self.symbol_filter = SymbolFilter(market_state, market_data=self.market_data)
 
     async def start_all(self, strategies: list, account_balance: float, preferred_exchange: str = 'mexc', timeframe: str = '1h', limit: int = 30):
         """Start trading for all symbols and strategies asynchronously, using available exchanges."""

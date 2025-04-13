@@ -4,7 +4,6 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 import asyncio
 from utils.logging_setup import setup_logging
-from data_sources.market_data import MarketData
 from strategies.rsi_strategy import RSIStrategy
 from strategies.bollinger_strategy import BollingerStrategy
 from strategies.macd_strategy import MACDStrategy
@@ -12,9 +11,9 @@ from strategies.macd_strategy import MACDStrategy
 logger = setup_logging('backtester')
 
 class Backtester:
-    def __init__(self, market_state: dict):
+    def __init__(self, market_state: dict, market_data):
         self.volatility = market_state['volatility']
-        self.market_data = MarketData(market_state)
+        self.market_data = market_data
 
     async def run_backtest(self, symbols: list, strategy: str, timeframe: str = '1h', limit: int = 30, exchange_name: str = 'mexc') -> dict:
         """Run a backtest for the specified symbols and strategy."""
@@ -29,11 +28,11 @@ class Backtester:
 
                 # Инициализируем стратегию
                 if strategy == 'rsi':
-                    strat = RSIStrategy({'volatility': self.volatility})
+                    strat = RSIStrategy({'volatility': self.volatility}, market_data=self.market_data)
                 elif strategy == 'bollinger':
-                    strat = BollingerStrategy({'volatility': self.volatility})
+                    strat = BollingerStrategy({'volatility': self.volatility}, market_data=self.market_data)
                 elif strategy == 'macd':
-                    strat = MACDStrategy({'volatility': self.volatility})
+                    strat = MACDStrategy({'volatility': self.volatility}, market_data=self.market_data)
                 else:
                     logger.error(f"Unsupported strategy: {strategy}")
                     raise ValueError(f"Unsupported strategy: {strategy}")
@@ -57,8 +56,10 @@ class Backtester:
 
 if __name__ == "__main__":
     # Test run
+    from data_sources.market_data import MarketData
     market_state = {'volatility': 0.3}
-    backtester = Backtester(market_state)
+    market_data = MarketData(market_state)
+    backtester = Backtester(market_state, market_data=market_data)
     
     async def main():
         symbols = ['BTC/USDT']

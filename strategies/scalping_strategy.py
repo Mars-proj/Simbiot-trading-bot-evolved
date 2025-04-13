@@ -3,18 +3,17 @@ import os
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 from utils.logging_setup import setup_logging
-from data_sources.market_data import MarketData
 from .strategy import Strategy
 from analysis.volatility_analyzer import VolatilityAnalyzer
 
 logger = setup_logging('scalping_strategy')
 
 class ScalpingStrategy(Strategy):
-    def __init__(self, market_state: dict):
+    def __init__(self, market_state: dict, market_data):
         super().__init__(market_state)
         self.lookback_period = 5
-        self.market_data = MarketData(market_state)
-        self.volatility_analyzer = VolatilityAnalyzer(market_state)
+        self.market_data = market_data
+        self.volatility_analyzer = VolatilityAnalyzer(market_state, market_data=market_data)
 
     async def generate_signal(self, symbol: str, timeframe: str = '1h', limit: int = 30, exchange_name: str = 'mexc') -> str:
         """Generate a trading signal based on scalping strategy with dynamic thresholds."""
@@ -50,10 +49,11 @@ class ScalpingStrategy(Strategy):
 
 if __name__ == "__main__":
     # Test run
-    from symbol_filter import SymbolFilter
+    from data_sources.market_data import MarketData
     market_state = {'volatility': 0.3}
-    strategy = ScalpingStrategy(market_state)
-    symbol_filter = SymbolFilter(market_state)
+    market_data = MarketData(market_state)
+    strategy = ScalpingStrategy(market_state, market_data=market_data)
+    symbol_filter = SymbolFilter(market_state, market_data=market_data)
     
     # Получаем символы
     symbols = asyncio.run(strategy.market_data.get_symbols('mexc'))
