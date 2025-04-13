@@ -1,28 +1,51 @@
-# Simbiot Trading Bot Roadmap
+graph TD
+    A[Phase 1: Initial Setup] -->|Completed| B[Core Modules]
+    B --> C[Trading Strategies]
+    C --> D[Bollinger Strategy]
+    C --> E[RSI Strategy]
+    C --> F[MACD Strategy]
+    B --> G[Exchange APIs]
+    G --> H[Binance API]
+    G --> I[MEXC API]
+    G --> J[Kraken API]
+    B --> K[Backtesting]
+    K --> L[Backtest Manager]
+    K --> M[Backtester]
+    B --> N[Logging Setup]
 
-## Завершённые этапы
-- [x] Инициализация проекта и базовая структура (2025-04-01)
-- [x] Интеграция с Redis для хранения данных пользователей (2025-04-02)
-- [x] Реализация асинхронного взаимодействия с биржей MEXC через ccxt (2025-04-03)
-- [x] Настройка Celery для параллельной обработки пользователей (2025-04-05)
-- [x] Исправление ошибок с загрузкой рынков и регистрацией задач (2025-04-08)
-  - Успешно загружаются данные OHLCV для 2753 символов.
-  - API-ключи для MEXC работают, рынки доступны.
-- [x] Упрощение стратегий для генерации сигналов (2025-04-08)
-  - Добавлена простая RSI-стратегия в `strategy_manager.py`.
-  - Логирование сигналов в `start_trading_all.py`.
+    A --> O[Phase 2: Enhanced Features]
+    O -->|Completed| P[Advanced Strategies]
+    P --> Q[Arbitrage Strategy]
+    P --> R[ML Strategy]
+    O --> S[ML Models]
+    S --> T[XGBoost Model]
+    O --> U[News & Social Media]
+    U --> V[News Fetcher]
+    U --> W[Social Media Fetcher]
+    O --> X[UI Visualization]
+    X --> Y[UI Manager]
+    X --> Z[Dashboard]
+    X --> AA[Performance Charts]
+    X --> AB[Trade Visualizer]
+    O --> AC[Monitoring]
+    AC --> AD[Monitoring Module]
+    AC --> AE[Alert Manager]
 
-## Текущие задачи
-- [ ] Генерация и выполнение реальных сделок
-  - Проверить, почему сигналы не генерируются (возможно, рынок в боковике).
-  - Реализовать выполнение сделок через MEXC API.
-- [ ] Оптимизация производительности
-  - Уменьшить время обработки символов (сейчас ~1.2 секунды на пользователя).
-  - Оптимизировать количество воркеров Celery для снижения нагрузки на CPU (ForkPoolWorker использует 13-17% CPU).
+    A --> AF[Phase 3: Optimization]
+    AF -->|In Progress| AG[Caching]
+    AG --> AH[Symbol Filter with Redis]
+    AF --> AI[Signal Optimization]
+    AI --> AJ[Strategy Manager Fix]
+    AF --> AK[Online Learning]
+    AF --> AL[Dynamic Strategy Switching]
+    AF --> AM[Performance Optimization]
+    AF --> AN[Risk Management]
+    AN --> AO[Risk Manager]
+    AN --> AP[Risk Calculator]
+    AF --> AQ[Advanced Market Analysis]
 
-## Будущие улучшения
-- [ ] Интеграция с другими биржами (Binance, Bybit)
-- [ ] Добавление уведомлений о сделках через Telegram
-- [ ] Реализация более сложных стратегий (например, машинное обучение)
-- [ ] Создание графического интерфейса для мониторинга
-- [ ] Автоматизация тестирования стратегий
+    A --> AR[Phase 4: Advanced Features]
+    AR -->|Planned| AS[Advanced NLP]
+    AR --> AT[DEX Support]
+    AR --> AU[Macroeconomic Data]
+    AR --> AV[Cloud Deployment]
