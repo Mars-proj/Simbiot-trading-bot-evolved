@@ -3,6 +3,7 @@ import os
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 from utils.logging_setup import setup_logging
+from volatility_analyzer import VolatilityAnalyzer
 
 logger = setup_logging('symbol_filter')
 
@@ -10,11 +11,11 @@ class SymbolFilter:
     def __init__(self, market_data, market_state: dict):
         self.market_data = market_data
         self.market_state = market_state
-        self.volatility_analyzer = market_data.volatility_analyzer  # Используем volatility_analyzer из market_data
+        self.volatility_analyzer = VolatilityAnalyzer(market_state, market_data)  # Создаём собственный экземпляр
         self.filters = {
             'min_liquidity': self.market_state.get('min_liquidity', 500),
             'max_volatility': self.market_state.get('max_volatility', 1.0),
-            'liquidity_period': self.market_state.get('liquidity_period', 240)  # Значение по умолчанию, будет переопределено
+            'liquidity_period': self.market_state.get('liquidity_period', 240)
         }
         logger.info(f"Set up filters: {self.filters}")
 
@@ -59,7 +60,6 @@ class SymbolFilter:
             logger.warning(f"Timeframe {timeframe} not supported on {exchange_name}. Using {supported_timeframes[0]} instead.")
             timeframe = supported_timeframes[0]
 
-        # Динамически выбираем период анализа ликвидности
         self.filters['liquidity_period'] = await self.determine_liquidity_period(symbols, exchange_name, timeframe)
 
         for symbol in symbols:
