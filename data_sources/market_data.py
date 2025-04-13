@@ -6,13 +6,12 @@ import asyncio
 from utils.logging_setup import setup_logging
 from .binance_api import BinanceAPI
 from .kraken_api import KrakenAPI
-from .mexc_api import MEXCAPI  # Исправлено с MexcAPI на MEXCAPI
+from .mexc_api import MEXCAPI
 from .bitstamp_api import BitstampAPI
 from .bybit_api import BybitAPI
 from .coinbase_api import CoinbaseAPI
 from .huobi_api import HuobiAPI
-from .kucoin_api import KucoinAPI
-from .roboforex_api import RoboForexAPI
+from .kucoin_api import KuCoinAPI
 
 logger = setup_logging('market_data')
 
@@ -27,13 +26,12 @@ class MarketData:
         exchange_classes = {
             'binance': BinanceAPI,
             'kraken': KrakenAPI,
-            'mexc': MEXCAPI,  # Исправлено с MexcAPI на MEXCAPI
+            'mexc': MEXCAPI,
             'bitstamp': BitstampAPI,
             'bybit': BybitAPI,
             'coinbase': CoinbaseAPI,
             'huobi': HuobiAPI,
-            'kucoin': KucoinAPI,
-            'roboforex': RoboForexAPI
+            'kucoin': KuCoinAPI
         }
         for exchange_name, exchange_class in exchange_classes.items():
             try:
