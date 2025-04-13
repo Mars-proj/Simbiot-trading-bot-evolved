@@ -1,71 +1,61 @@
 import sys
 import os
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '.')))
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 from utils.logging_setup import setup_logging
 
 logger = setup_logging('symbol_filter')
 
 class SymbolFilter:
-    def __init__(self, market_state: dict, market_data):
-        self.volatility = market_state['volatility']
-        self.filters = {}
+    def __init__(self, market_data):
         self.market_data = market_data
-
-    def setup_default_filters(self, min_liquidity: float = 1000000, max_volatility: float = 0.5) -> None:
-        """Set up default filters for symbol selection."""
-        self.filters['min_liquidity'] = min_liquidity
-        self.filters['max_volatility'] = max_volatility
+        self.filters = {
+            'min_liquidity': 1000000,
+            'max_volatility': 0.5
+        }
         logger.info(f"Set up default filters: {self.filters}")
 
-    async def filter_symbols(self, symbols: list, exchange_name: str) -> list:
-        """Filter symbols based on liquidity and volatility asynchronously."""
-        try:
-            filtered_symbols = []
-            for symbol in symbols:
-                try:
-                    # Получаем данные для символа
-                    klines = await self.market_data.get_klines(symbol, '1h', 30, exchange_name)
-                    if not klines:
-                        logger.warning(f"No klines data for {symbol} on {exchange_name}, skipping")
-                        continue
+    async def filter_symbols(self, symbols: list, exchange_name: str, timeframe: str) -> list:
+        """Filter symbols based on liquidity and volatility using the specified timeframe."""
+        filtered_symbols = []
 
-                    # Проверяем ликвидность (объём торгов)
-                    total_volume = sum(float(kline['volume']) for kline in klines)
-                    if total_volume < self.filters['min_liquidity']:
-                        logger.debug(f"Symbol {symbol} filtered out due to low liquidity: {total_volume}")
-                        continue
+        # Получаем список поддерживаемых таймфреймов для биржи
+        supported_timeframes = await self.market_data.get_supported_timeframes(exchange_name, symbols[0] if symbols else '')
+        if not supported_timeframes:
+            logger.error(f"No supported timeframes found for {exchange_name}")
+            return []
 
-                    # Проверяем волатильность
-                    closes = [float(kline['close']) for kline in klines]
-                    returns = [(closes[i] - closes[i-1]) / closes[i-1] for i in range(1, len(closes))]
-                    volatility = (sum((r - sum(returns) / len(returns)) ** 2 for r in returns) / len(returns)) ** 0.5
-                    if volatility > self.filters['max_volatility']:
-                        logger.debug(f"Symbol {symbol} filtered out due to high volatility: {volatility}")
-                        continue
+        # Если переданный timeframe не поддерживается, выбираем первый доступный
+        if timeframe not in supported_timeframes:
+            logger.warning(f"Timeframe {timeframe} not supported on {exchange_name}. Using {supported_timeframes[0]} instead.")
+            timeframe = supported_timeframes[0]
 
-                    filtered_symbols.append(symbol)
-                except Exception as e:
-                    logger.warning(f"Skipping {symbol} due to error: {str(e)}")
+        for symbol in symbols:
+            try:
+                # Fetch klines for the symbol to calculate liquidity and volatility
+                klines = await self.market_data.get_klines(symbol, timeframe, 1, exchange_name)
+                if not klines:
+                    logger.warning(f"No klines data for {symbol} on {exchange_name} with timeframe {timeframe}, skipping")
                     continue
 
-            logger.info(f"Filtered {len(filtered_symbols)} symbols: {filtered_symbols}")
-            return filtered_symbols
-        except Exception as e:
-            logger.error(f"Failed to filter symbols: {str(e)}")
-            raise
+                # Calculate liquidity (using volume from the latest kline)
+                latest_kline = klines[-1]
+                liquidity = latest_kline['volume'] * latest_kline['close']
+                if liquidity < self.filters['min_liquidity']:
+                    logger.debug(f"Skipping {symbol} due to low liquidity: {liquidity}")
+                    continue
 
-if __name__ == "__main__":
-    # Test run
-    import asyncio
-    from data_sources.market_data import MarketData
-    market_state = {'volatility': 0.3}
-    market_data = MarketData(market_state)
-    symbol_filter = SymbolFilter(market_state, market_data=market_data)
-    symbols = ['BTC/USDT', 'ETH/USDT', 'XRP/USDT']
-    
-    async def main():
-        filtered = await symbol_filter.filter_symbols(symbols, 'mexc')
-        print(f"Filtered symbols: {filtered}")
+                # Calculate volatility
+                prices = [kline['close'] for kline in klines]
+                volatility = (max(prices) - min(prices)) / min(prices) if min(prices) != 0 else float('inf')
+                if volatility > self.filters['max_volatility']:
+                    logger.debug(f"Skipping {symbol} due to high volatility: {volatility}")
+                    continue
 
-    asyncio.run(main())
+                filtered_symbols.append(symbol)
+            except Exception as e:
+                logger.warning(f"Error filtering {symbol}: {str(e)}")
+                continue
+
+        logger.info(f"Retrieved {len(filtered_symbols)} cached symbols for {exchange_name} with timeframe {timeframe}")
+        return filtered_symbols
