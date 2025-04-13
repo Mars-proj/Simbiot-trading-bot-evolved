@@ -16,9 +16,9 @@ class MLStrategy(Strategy):
     def __init__(self, market_state: dict, market_data):
         super().__init__(market_state, market_data=market_data)
         self.volatility = market_state['volatility']
-        self.model = LocalModelAPI()
-        self.news_fetcher = NewsFetcher()
-        self.social_media_fetcher = SocialMediaFetcher()
+        self.model = LocalModelAPI(market_state=market_state)
+        self.news_fetcher = NewsFetcher(market_state=market_state)  # Передаём market_state
+        self.social_media_fetcher = SocialMediaFetcher(market_state=market_state)  # Передаём market_state
         self.is_trained = False  # Флаг для отслеживания состояния модели
 
     def prepare_features(self, klines: list, tweets: list, news_articles: list) -> list:
@@ -85,6 +85,9 @@ class MLStrategy(Strategy):
             # Train the model if not already trained
             if not self.is_trained:
                 await self.train_model(symbol, timeframe, max(limit, 100), exchange_name)
+                if not self.is_trained:
+                    logger.warning(f"Model training failed for {symbol}, returning hold")
+                    return "hold"
 
             klines = await self.market_data.get_klines(symbol, timeframe, limit, exchange_name)
             if not klines:
@@ -99,7 +102,12 @@ class MLStrategy(Strategy):
             features = self.prepare_features(klines, tweets, news_articles)
 
             # Use the model to predict
-            prediction = self.model.predict([features])[0]
+            try:
+                prediction = self.model.predict([features])[0]
+            except ValueError as e:
+                logger.warning(f"Model not ready for prediction: {str(e)}, returning hold")
+                return "hold"
+
             logger.info(f"Generated ML signal for {symbol}: {prediction}")
             return "buy" if prediction > 0.5 else "sell"
         except Exception as e:
