@@ -1,8 +1,15 @@
+import sys
+import os
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+
 import random
-from trading_bot.logging_setup import setup_logging
-from trading_bot.strategies.strategy import Strategy
-from trading_bot.data_sources.market_data import MarketData
-from trading_bot.learning.backtester import Backtester
+from utils.logging_setup import setup_logging
+from strategies.strategy import Strategy
+from data_sources.market_data import MarketData
+from .backtester import Backtester
+from strategies.rsi_strategy import RSIStrategy
+from strategies.bollinger_strategy import BollingerStrategy
+from strategies.macd_strategy import MACDStrategy
 
 logger = setup_logging('genetic_optimizer')
 

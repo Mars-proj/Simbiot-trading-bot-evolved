@@ -1,52 +1,56 @@
-from trading_bot.logging_setup import setup_logging
-from trading_bot.strategies.strategy_manager import StrategyManager
+import sys
+import os
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+
+import asyncio
+from utils.logging_setup import setup_logging
+from data_sources.market_data import MarketData
+from strategies.rsi_strategy import RSIStrategy
+from strategies.bollinger_strategy import BollingerStrategy
+from strategies.macd_strategy import MACDStrategy
 
 logger = setup_logging('backtester')
 
 class Backtester:
-    def __init__(self, market_state: dict, account_balance: float = 10000):
+    def __init__(self, market_state: dict):
         self.volatility = market_state['volatility']
-        self.account_balance = account_balance
-        self.strategy_manager = StrategyManager(market_state)
+        self.market_data = MarketData(market_state)
 
-    def run_backtest(self, klines: list, strategy_name: str) -> dict:
-        """Run a backtest for the specified strategy."""
+    async def run_backtest(self, symbols: list, strategy: str, timeframe: str = '1h', limit: int = 30, exchange_name: str = 'mexc') -> dict:
+        """Run a backtest for the specified symbols and strategy."""
         try:
-            if not klines:
-                logger.warning("No kline data provided for backtest")
-                return {'status': 'failed', 'reason': 'no data'}
+            results = {}
+            for symbol in symbols:
+                # Получаем данные для символа
+                klines = await self.market_data.get_klines(symbol, timeframe, limit, exchange_name)
+                if not klines:
+                    logger.warning(f"No data for {symbol} on {exchange_name}")
+                    continue
 
-            # Добавляем стратегию в менеджер
-            self.strategy_manager.add_strategy(strategy_name)
-            
-            # Генерируем сигналы
-            signals = self.strategy_manager.generate_signals(klines)[strategy_name]
-            
-            # Симулируем сделки
-            balance = self.account_balance
-            positions = []
-            for signal in signals:
-                if signal['signal'] == 'buy':
-                    # Покупаем актив
-                    quantity = (balance * 0.1) / klines[signal['timestamp']]['close']  # 10% баланса
-                    positions.append({
-                        'entry_price': klines[signal['timestamp']]['close'],
-                        'quantity': quantity
-                    })
-                    balance -= quantity * klines[signal['timestamp']]['close']
-                elif signal['signal'] == 'sell' and positions:
-                    # Продаём актив
-                    position = positions.pop(0)
-                    profit = (klines[signal['timestamp']]['close'] - position['entry_price']) * position['quantity']
-                    balance += position['quantity'] * klines[signal['timestamp']]['close']
-            
-            result = {
-                'final_balance': balance,
-                'profit': balance - self.account_balance,
-                'positions': positions
-            }
-            logger.info(f"Backtest result: {result}")
-            return result
+                # Инициализируем стратегию
+                if strategy == 'rsi':
+                    strat = RSIStrategy({'volatility': self.volatility})
+                elif strategy == 'bollinger':
+                    strat = BollingerStrategy({'volatility': self.volatility})
+                elif strategy == 'macd':
+                    strat = MACDStrategy({'volatility': self.volatility})
+                else:
+                    logger.error(f"Unsupported strategy: {strategy}")
+                    raise ValueError(f"Unsupported strategy: {strategy}")
+
+                # Симулируем торговлю
+                profit = 0
+                for i in range(1, len(klines)):
+                    signal = await strat.generate_signal(symbol, timeframe, i, exchange_name)
+                    if signal == 'buy':
+                        profit -= klines[i]['close']  # Покупаем
+                    elif signal == 'sell' and profit < 0:
+                        profit += klines[i]['close']  # Продаём
+
+                results[symbol] = {'profit': profit}
+                logger.info(f"Backtest result for {symbol}: {results[symbol]}")
+
+            return results
         except Exception as e:
             logger.error(f"Failed to run backtest: {str(e)}")
             raise
@@ -55,6 +59,10 @@ if __name__ == "__main__":
     # Test run
     market_state = {'volatility': 0.3}
     backtester = Backtester(market_state)
-    klines = [{'timestamp': i, 'close': float(50000 + i * 100)} for i in range(30)]
-    result = backtester.run_backtest(klines, 'bollinger')
-    print(f"Backtest result: {result}")
+    
+    async def main():
+        symbols = ['BTC/USDT']
+        result = await backtester.run_backtest(symbols, 'rsi', '1h', 30, 'mexc')
+        print(f"Backtest result: {result}")
+
+    asyncio.run(main())
