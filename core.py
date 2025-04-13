@@ -6,7 +6,7 @@ import asyncio
 from utils.logging_setup import setup_logging
 from strategies.strategy_manager import StrategyManager
 from learning.online_learning import OnlineLearning
-from .volatility_analyzer import VolatilityAnalyzer
+from volatility_analyzer import VolatilityAnalyzer  # Абсолютный импорт
 from symbol_filter import SymbolFilter
 
 logger = setup_logging('core')
