@@ -6,12 +6,13 @@ import asyncio
 from utils.logging_setup import setup_logging
 from .binance_api import BinanceAPI
 from .kraken_api import KrakenAPI
-from .mexc_api import MEXCAPI
+from .mexc_api import MexcAPI
 from .bitstamp_api import BitstampAPI
 from .bybit_api import BybitAPI
 from .coinbase_api import CoinbaseAPI
 from .huobi_api import HuobiAPI
-from .kucoin_api import KuCoinAPI
+from .kucoin_api import KucoinAPI
+from .roboforex_api import RoboForexAPI
 
 logger = setup_logging('market_data')
 
@@ -19,58 +20,51 @@ class MarketData:
     def __init__(self, market_state: dict):
         self.volatility = market_state['volatility']
         self.exchanges = {}
-        self.available_exchanges = []
+        self._initialize_exchanges()
 
-        # Инициализируем биржи, пропуская те, где ключи невалидны
+    def _initialize_exchanges(self):
+        """Initialize all supported exchanges."""
         exchange_classes = {
             'binance': BinanceAPI,
             'kraken': KrakenAPI,
-            'mexc': MEXCAPI,
+            'mexc': MexcAPI,
             'bitstamp': BitstampAPI,
             'bybit': BybitAPI,
             'coinbase': CoinbaseAPI,
             'huobi': HuobiAPI,
-            'kucoin': KuCoinAPI
+            'kucoin': KucoinAPI,
+            'roboforex': RoboForexAPI
         }
-
         for exchange_name, exchange_class in exchange_classes.items():
             try:
-                self.exchanges[exchange_name] = exchange_class(market_state)
-                self.available_exchanges.append(exchange_name)
+                self.exchanges[exchange_name] = exchange_class()
                 logger.info(f"Successfully initialized {exchange_name}")
             except Exception as e:
                 logger.warning(f"Skipping {exchange_name} due to initialization error: {str(e)}")
+                continue
 
-        if not self.available_exchanges:
-            logger.error("No valid exchanges available")
-            raise ValueError("No valid exchanges available")
+    def get_available_exchanges(self) -> list:
+        """Return a list of initialized exchanges."""
+        return list(self.exchanges.keys())
 
-    async def get_klines(self, symbol: str, timeframe: str, limit: int, exchange_name: str = 'mexc') -> list:
-        """Fetch klines data from the specified exchange asynchronously."""
-        try:
-            if exchange_name not in self.available_exchanges:
-                logger.warning(f"Exchange {exchange_name} is not available, skipping")
-                return []
-
-            klines = await self.exchanges[exchange_name].get_klines(symbol, timeframe, limit)
-            return klines
-        except Exception as e:
-            logger.error(f"Failed to fetch klines for {symbol} from {exchange_name}: {str(e)}")
+    async def get_symbols(self, exchange_name: str) -> list:
+        """Get all trading symbols from an exchange."""
+        if exchange_name not in self.exchanges:
+            logger.error(f"Exchange {exchange_name} not initialized")
             return []
-
-    async def get_symbols(self, exchange_name: str = 'mexc') -> list:
-        """Fetch available trading symbols from the specified exchange asynchronously."""
         try:
-            if exchange_name not in self.available_exchanges:
-                logger.warning(f"Exchange {exchange_name} is not available, skipping")
-                return []
-
-            symbols = await self.exchanges[exchange_name].get_symbols()
-            return symbols
+            return await self.exchanges[exchange_name].get_symbols()
         except Exception as e:
             logger.error(f"Failed to fetch symbols from {exchange_name}: {str(e)}")
             return []
 
-    def get_available_exchanges(self) -> list:
-        """Return the list of available exchanges."""
-        return self.available_exchanges
+    async def get_klines(self, symbol: str, timeframe: str, limit: int, exchange_name: str) -> list:
+        """Get historical klines for a symbol from an exchange."""
+        if exchange_name not in self.exchanges:
+            logger.error(f"Exchange {exchange_name} not initialized")
+            return []
+        try:
+            return await self.exchanges[exchange_name].get_klines(symbol, timeframe, limit)
+        except Exception as e:
+            logger.error(f"Failed to fetch klines for {symbol} from {exchange_name}: {str(e)}")
+            return []
