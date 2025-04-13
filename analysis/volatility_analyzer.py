@@ -2,6 +2,7 @@ import sys
 import os
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
+import asyncio
 from utils.logging_setup import setup_logging
 
 logger = setup_logging('volatility_analyzer')
@@ -30,13 +31,21 @@ class VolatilityAnalyzer:
 
 if __name__ == "__main__":
     # Test run
+    import asyncio
     from data_sources.market_data import MarketData
+    from symbol_filter import SymbolFilter
     market_state = {'volatility': 0.3}
     market_data = MarketData(market_state)
     analyzer = VolatilityAnalyzer(market_state, market_data=market_data)
     
     async def main():
-        volatility = await analyzer.analyze_volatility("BTC/USDT", "mexc")
-        print(f"Volatility for BTC/USDT on MEXC: {volatility}")
+        symbol_filter = SymbolFilter(market_state, market_data=market_data)
+        symbols = await market_data.get_symbols('mexc')
+        symbols = await symbol_filter.filter_symbols(symbols, 'mexc')
+        if symbols:
+            volatility = await analyzer.analyze_volatility(symbols[0], 'mexc')
+            print(f"Volatility for {symbols[0]} on MEXC: {volatility}")
+        else:
+            print("No symbols available for testing")
 
     asyncio.run(main())
