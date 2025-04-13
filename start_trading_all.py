@@ -17,23 +17,19 @@ class StartTradingAll:
     async def start_all(self, strategies: list, balance: float, timeframe: str, limit: int):
         """Start trading for all symbols on the first available exchange, prioritizing MEXC."""
         try:
-            # Получаем список доступных бирж
             available_exchanges = self.market_data.get_available_exchanges()
             if not available_exchanges:
                 logger.error("No exchanges available for trading")
                 return []
 
-            # Приоритетно выбираем MEXC, если он доступен
             exchange_name = 'mexc' if 'mexc' in available_exchanges else available_exchanges[0]
             logger.info(f"Using exchange: {exchange_name}")
 
-            # Получаем символы с выбранной биржи
             symbols = await self.market_data.get_symbols(exchange_name)
             if not symbols:
                 logger.error(f"No symbols found for exchange: {exchange_name}")
                 return []
 
-            # Фильтруем символы с учётом таймфрейма
             filtered_symbols = await self.core.filter_symbols(symbols, exchange_name, timeframe)
             if not filtered_symbols:
                 logger.error(f"No symbols passed filtering for exchange: {exchange_name}")
@@ -55,7 +51,12 @@ class StartTradingAll:
             raise
 
 if __name__ == "__main__":
-    market_state = {'volatility': 0.3}
+    market_state = {
+        'volatility': 0.3,
+        'min_liquidity': 500,  # Ещё снижаем порог для теста
+        'max_volatility': 1.0,  # Увеличиваем допустимую волатильность
+        'liquidity_period': 240  # 4 часа
+    }
     starter = StartTradingAll(market_state)
     loop = asyncio.get_event_loop()
     results = loop.run_until_complete(starter.start_all(['bollinger', 'rsi', 'macd'], 10000, '1h', 30))
