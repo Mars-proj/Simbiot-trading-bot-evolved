@@ -9,10 +9,10 @@ from analysis.volatility_analyzer import VolatilityAnalyzer
 logger = setup_logging('trade_executor')
 
 class TradeExecutor:
-    def __init__(self, market_state: dict):
+    def __init__(self, market_state: dict, market_data):
         self.volatility = market_state['volatility']
         self.performance_tracker = PerformanceTracker(market_state)
-        self.volatility_analyzer = VolatilityAnalyzer(market_state)
+        self.volatility_analyzer = VolatilityAnalyzer(market_state, market_data=market_data)
         self.min_trade_amount = 10.0  # Минимальная сумма сделки в долларах
         self.commission_rate = 0.001  # Комиссия 0.1%
 

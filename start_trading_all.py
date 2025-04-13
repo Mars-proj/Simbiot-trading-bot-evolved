@@ -38,7 +38,7 @@ class StartTradingAll:
 
             # Применяем фильтры для выбора символов
             self.symbol_filter.setup_default_filters(min_liquidity=1000000, max_volatility=0.5)
-            symbols = self.symbol_filter.filter_symbols(all_symbols, exchange_name)
+            symbols = await self.symbol_filter.filter_symbols(all_symbols, exchange_name)
             if not symbols:
                 logger.warning(f"No symbols passed the filter on {exchange_name}")
                 return {}
@@ -64,7 +64,7 @@ class StartTradingAll:
                     # Динамическая корректировка баланса на основе волатильности
                     adjusted_balance = account_balance * (1 - self.volatility / 2)
                     
-                    trades = self.core.run_trading(symbol, strategy, adjusted_balance, timeframe, limit, exchange_name)
+                    trades = await self.core.run_trading(symbol, strategy, adjusted_balance, timeframe, limit, exchange_name)
                     symbol_results[strategy] = trades
                 results[symbol] = symbol_results
             

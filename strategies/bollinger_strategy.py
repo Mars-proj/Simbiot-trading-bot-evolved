@@ -2,6 +2,7 @@ import sys
 import os
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
+import asyncio
 from utils.logging_setup import setup_logging
 from .strategy import Strategy
 from analysis.volatility_analyzer import VolatilityAnalyzer
@@ -63,18 +64,22 @@ class BollingerStrategy(Strategy):
 
 if __name__ == "__main__":
     # Test run
+    import asyncio
     from data_sources.market_data import MarketData
+    from symbol_filter import SymbolFilter
     market_state = {'volatility': 0.3}
     market_data = MarketData(market_state)
     strategy = BollingerStrategy(market_state, market_data=market_data)
     symbol_filter = SymbolFilter(market_state, market_data=market_data)
     
-    # Получаем символы
-    symbols = asyncio.run(strategy.market_data.get_symbols('mexc'))
-    symbols = symbol_filter.filter_symbols(symbols, 'mexc')
-    
-    if symbols:
-        signal = asyncio.run(strategy.generate_signal(symbols[0], '1h', 30, 'mexc'))
-        print(f"Signal for {symbols[0]}: {signal}")
-    else:
-        print("No symbols available for testing")
+    async def main():
+        symbols = await strategy.market_data.get_symbols('mexc')
+        symbols = await symbol_filter.filter_symbols(symbols, 'mexc')
+        
+        if symbols:
+            signal = await strategy.generate_signal(symbols[0], '1h', 30, 'mexc')
+            print(f"Signal for {symbols[0]}: {signal}")
+        else:
+            print("No symbols available for testing")
+
+    asyncio.run(main())

@@ -18,14 +18,14 @@ class SymbolFilter:
         self.filters['max_volatility'] = max_volatility
         logger.info(f"Set up default filters: {self.filters}")
 
-    def filter_symbols(self, symbols: list, exchange_name: str) -> list:
-        """Filter symbols based on liquidity and volatility."""
+    async def filter_symbols(self, symbols: list, exchange_name: str) -> list:
+        """Filter symbols based on liquidity and volatility asynchronously."""
         try:
             filtered_symbols = []
             for symbol in symbols:
                 try:
                     # Получаем данные для символа
-                    klines = self.market_data.get_klines(symbol, '1h', 30, exchange_name)
+                    klines = await self.market_data.get_klines(symbol, '1h', 30, exchange_name)
                     if not klines:
                         logger.warning(f"No klines data for {symbol} on {exchange_name}, skipping")
                         continue
@@ -57,10 +57,15 @@ class SymbolFilter:
 
 if __name__ == "__main__":
     # Test run
+    import asyncio
     from data_sources.market_data import MarketData
     market_state = {'volatility': 0.3}
     market_data = MarketData(market_state)
     symbol_filter = SymbolFilter(market_state, market_data=market_data)
     symbols = ['BTC/USDT', 'ETH/USDT', 'XRP/USDT']
-    filtered = symbol_filter.filter_symbols(symbols, 'mexc')
-    print(f"Filtered symbols: {filtered}")
+    
+    async def main():
+        filtered = await symbol_filter.filter_symbols(symbols, 'mexc')
+        print(f"Filtered symbols: {filtered}")
+
+    asyncio.run(main())

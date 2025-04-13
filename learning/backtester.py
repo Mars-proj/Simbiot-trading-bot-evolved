@@ -56,14 +56,18 @@ class Backtester:
 
 if __name__ == "__main__":
     # Test run
+    import asyncio
     from data_sources.market_data import MarketData
+    from symbol_filter import SymbolFilter
     market_state = {'volatility': 0.3}
     market_data = MarketData(market_state)
     backtester = Backtester(market_state, market_data=market_data)
     
     async def main():
-        symbols = ['BTC/USDT']
-        result = await backtester.run_backtest(symbols, 'rsi', '1h', 30, 'mexc')
+        symbol_filter = SymbolFilter(market_state, market_data=market_data)
+        symbols = await market_data.get_symbols('mexc')
+        symbols = await symbol_filter.filter_symbols(symbols, 'mexc')
+        result = await backtester.run_backtest(symbols[:1], 'rsi', '1h', 30, 'mexc')
         print(f"Backtest result: {result}")
 
     asyncio.run(main())
