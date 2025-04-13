@@ -39,19 +39,19 @@ class MEXCAPI:
         try:
             # Преобразуем timeframe в формат MEXC
             interval_map = {
-                '1m': 'Min1',
-                '5m': 'Min5',
-                '15m': 'Min15',
-                '30m': 'Min30',
-                '1h': 'Hour1',
-                '4h': 'Hour4',
-                '1d': 'Day1'
+                '1m': '1m',
+                '5m': '5m',
+                '15m': '15m',
+                '30m': '30m',
+                '1h': '60m',
+                '4h': '4h',
+                '1d': '1d'
             }
-            interval = interval_map.get(timeframe, 'Hour1')
+            interval = interval_map.get(timeframe, '60m')
 
             # Параметры запроса
             params = {
-                'symbol': symbol.replace('/', ''),  # MEXC использует формат, например, BTCUSDT
+                'symbol': symbol.replace('/', ''),
                 'interval': interval,
                 'limit': limit
             }
@@ -89,23 +89,9 @@ class MEXCAPI:
                     response.raise_for_status()
                     data = await response.json()
 
-            symbols = [symbol['symbol'].replace('_', '/') for symbol in data['symbols'] if symbol['status'] == 'ENABLED']
+            symbols = [symbol['symbol'].replace('_', '/') for symbol in data['symbols'] if symbol['status'] == '1']
             logger.info(f"Fetched {len(symbols)} symbols from MEXC")
             return symbols
         except Exception as e:
             logger.error(f"Failed to fetch symbols from MEXC: {str(e)}")
             raise
-
-if __name__ == "__main__":
-    # Test run
-    market_state = {'volatility': 0.3}
-    mexc_api = MEXCAPI(market_state)
-    
-    async def main():
-        symbols = await mexc_api.get_symbols()
-        print(f"Available symbols: {symbols[:5]}")  # Первые 5 символов
-        
-        klines = await mexc_api.get_klines("BTC/USDT", "1h", 5)
-        print(f"Klines for BTC/USDT: {klines}")
-
-    asyncio.run(main())
