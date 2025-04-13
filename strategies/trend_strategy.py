@@ -3,72 +3,41 @@ import os
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 import asyncio
+import numpy as np
 from utils.logging_setup import setup_logging
 from .strategy import Strategy
-from analysis.volatility_analyzer import VolatilityAnalyzer
 
 logger = setup_logging('trend_strategy')
 
 class TrendStrategy(Strategy):
-    def __init__(self, market_state: dict, market_data):
-        super().__init__(market_state)
-        self.lookback_period = 20
-        self.market_data = market_data
-        self.volatility_analyzer = VolatilityAnalyzer(market_state, market_data=market_data)
+    def __init__(self, market_state: dict, market_data=None):
+        super().__init__(market_state, market_data=market_data)
+        self.window = 20  # Период для расчёта скользящей средней
 
     async def generate_signal(self, symbol: str, timeframe: str = '1h', limit: int = 30, exchange_name: str = 'mexc') -> str:
-        """Generate a trading signal based on trend strategy with dynamic thresholds."""
+        """Generate a trading signal using trend following."""
         try:
-            # Получаем данные с биржи
             klines = await self.market_data.get_klines(symbol, timeframe, limit, exchange_name)
-            if len(klines) < self.lookback_period:
+            if len(klines) < self.window:
                 logger.warning(f"Not enough data for {symbol} to calculate trend")
                 return "hold"
 
-            closes = [kline['close'] for kline in klines[-self.lookback_period:]]
-            
-            # Динамически рассчитываем периоды MA на основе волатильности
-            symbol_volatility = self.volatility_analyzer.analyze_volatility(symbol, exchange_name)
-            short_period = int(5 * (1 - symbol_volatility * 0.5))  # Базовый период 5, уменьшается при высокой волатильности
-            long_period = int(self.lookback_period * (1 + symbol_volatility * 0.5))  # Базовый период 20, увеличивается при высокой волатильности
-            short_period = max(3, short_period)  # Минимальный период 3
-            long_period = min(50, long_period)   # Максимальный период 50
+            close_prices = [kline['close'] for kline in klines]
+            close_array = np.array(close_prices[-self.window:])
 
-            # Simple trend detection using moving average
-            ma_short = sum(closes[-short_period:]) / short_period
-            ma_long = sum(closes[-long_period:]) / long_period
+            sma = np.mean(close_array)
+            current_price = close_prices[-1]
 
-            if ma_short > ma_long:
+            # Генерируем сигнал
+            if current_price > sma:
                 signal = "buy"
-            elif ma_short < ma_long:
+            elif current_price < sma:
                 signal = "sell"
             else:
                 signal = "hold"
 
-            logger.info(f"Generated signal for {symbol}: {signal} (MA Short: {ma_short}, MA Long: {ma_long})")
+            logger.info(f"Generated signal for {symbol}: {signal} (Price: {current_price}, SMA: {sma})")
             return signal
         except Exception as e:
-            logger.error(f"Error generating signal for {symbol}: {str(e)}")
-            raise
-
-if __name__ == "__main__":
-    # Test run
-    import asyncio
-    from data_sources.market_data import MarketData
-    from symbol_filter import SymbolFilter
-    market_state = {'volatility': 0.3}
-    market_data = MarketData(market_state)
-    strategy = TrendStrategy(market_state, market_data=market_data)
-    symbol_filter = SymbolFilter(market_state, market_data=market_data)
-    
-    async def main():
-        symbols = await strategy.market_data.get_symbols('mexc')
-        symbols = await symbol_filter.filter_symbols(symbols, 'mexc')
-        
-        if symbols:
-            signal = await strategy.generate_signal(symbols[0], '1h', 30, 'mexc')
-            print(f"Signal for {symbols[0]}: {signal}")
-        else:
-            print("No symbols available for testing")
-
-    asyncio.run(main())
+            logger.error(f"Failed to generate signal for {symbol}: {str(e)}")
+            return "hold"

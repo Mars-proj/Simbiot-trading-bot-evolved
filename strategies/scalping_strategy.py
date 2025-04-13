@@ -3,69 +3,42 @@ import os
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 import asyncio
+import numpy as np
 from utils.logging_setup import setup_logging
 from .strategy import Strategy
-from analysis.volatility_analyzer import VolatilityAnalyzer
 
 logger = setup_logging('scalping_strategy')
 
 class ScalpingStrategy(Strategy):
-    def __init__(self, market_state: dict, market_data):
-        super().__init__(market_state)
-        self.lookback_period = 5
-        self.market_data = market_data
-        self.volatility_analyzer = VolatilityAnalyzer(market_state, market_data=market_data)
+    def __init__(self, market_state: dict, market_data=None):
+        super().__init__(market_state, market_data=market_data)
+        self.window = 5  # Короткий период для скальпинга
+        self.threshold = 0.01  # Порог изменения цены (1%)
 
-    async def generate_signal(self, symbol: str, timeframe: str = '1h', limit: int = 30, exchange_name: str = 'mexc') -> str:
-        """Generate a trading signal based on scalping strategy with dynamic thresholds."""
+    async def generate_signal(self, symbol: str, timeframe: str = '1m', limit: int = 10, exchange_name: str = 'mexc') -> str:
+        """Generate a trading signal for scalping."""
         try:
-            # Получаем данные с биржи
             klines = await self.market_data.get_klines(symbol, timeframe, limit, exchange_name)
-            if len(klines) < self.lookback_period:
-                logger.warning(f"Not enough data for {symbol} to calculate scalping levels")
+            if len(klines) < self.window:
+                logger.warning(f"Not enough data for {symbol} to calculate scalping signal")
                 return "hold"
 
-            closes = [kline['close'] for kline in klines[-self.lookback_period:]]
-            avg_price = sum(closes) / len(closes)
+            close_prices = [kline['close'] for kline in klines]
+            close_array = np.array(close_prices[-self.window:])
 
-            # Динамически рассчитываем порог на основе волатильности
-            symbol_volatility = self.volatility_analyzer.analyze_volatility(symbol, exchange_name)
-            threshold = 0.005 * (1 + symbol_volatility)  # Базовый порог 0.5%, корректируется на волатильность
+            # Рассчитываем процентное изменение цены
+            price_change = (close_array[-1] - close_array[0]) / close_array[0] if close_array[0] != 0 else 0
 
-            price = klines[-1]['close']
-            price_change = (price - avg_price) / avg_price
-
-            if price_change > threshold:
+            # Генерируем сигнал
+            if price_change > self.threshold:
                 signal = "sell"
-            elif price_change < -threshold:
+            elif price_change < -self.threshold:
                 signal = "buy"
             else:
                 signal = "hold"
 
-            logger.info(f"Generated signal for {symbol}: {signal} (Price: {price}, Avg Price: {avg_price}, Threshold: {threshold})")
+            logger.info(f"Generated signal for {symbol}: {signal} (Price Change: {price_change})")
             return signal
         except Exception as e:
-            logger.error(f"Error generating signal for {symbol}: {str(e)}")
-            raise
-
-if __name__ == "__main__":
-    # Test run
-    import asyncio
-    from data_sources.market_data import MarketData
-    from symbol_filter import SymbolFilter
-    market_state = {'volatility': 0.3}
-    market_data = MarketData(market_state)
-    strategy = ScalpingStrategy(market_state, market_data=market_data)
-    symbol_filter = SymbolFilter(market_state, market_data=market_data)
-    
-    async def main():
-        symbols = await strategy.market_data.get_symbols('mexc')
-        symbols = await symbol_filter.filter_symbols(symbols, 'mexc')
-        
-        if symbols:
-            signal = await strategy.generate_signal(symbols[0], '1h', 30, 'mexc')
-            print(f"Signal for {symbols[0]}: {signal}")
-        else:
-            print("No symbols available for testing")
-
-    asyncio.run(main())
+            logger.error(f"Failed to generate signal for {symbol}: {str(e)}")
+            return "hold"

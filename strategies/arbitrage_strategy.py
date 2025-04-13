@@ -3,91 +3,54 @@ import os
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 import asyncio
+import numpy as np
 from utils.logging_setup import setup_logging
 from .strategy import Strategy
 
 logger = setup_logging('arbitrage_strategy')
 
 class ArbitrageStrategy(Strategy):
-    def __init__(self, market_state: dict, market_data):
-        super().__init__(market_state)
-        self.market_data = market_data
-        self.exchanges = ['mexc', 'binance']  # Биржи для арбитража
+    def __init__(self, market_state: dict, market_data=None):
+        super().__init__(market_state, market_data=market_data)
+        self.price_diff_threshold = 0.05  # Порог разницы цен для арбитража (5%)
 
-    async def find_arbitrage_opportunity(self, symbol: str) -> dict:
-        """Find arbitrage opportunities between exchanges."""
+    async def generate_signal(self, symbol: str, timeframe: str = '1h', limit: int = 30, exchange_name: str = 'mexc') -> str:
+        """Generate a trading signal using arbitrage opportunities."""
         try:
-            # Получаем цены с разных бирж асинхронно
-            tasks = [self.market_data.get_klines(symbol, '1m', 1, exchange) for exchange in self.exchanges]
-            klines = await asyncio.gather(*tasks, return_exceptions=True)
+            # Получаем доступные биржи
+            exchanges = self.market_data.get_available_exchanges()
+            if len(exchanges) < 2:
+                logger.warning("Not enough exchanges for arbitrage")
+                return "hold"
+
+            # Получаем цены с разных бирж
+            tasks = [self.market_data.get_klines(symbol, timeframe, 1, exchange) for exchange in exchanges]
+            klines_list = await asyncio.gather(*tasks, return_exceptions=True)
 
             prices = {}
-            for exchange, kline in zip(self.exchanges, klines):
-                if isinstance(kline, Exception):
-                    logger.warning(f"Failed to fetch price for {symbol} on {exchange}: {str(kline)}")
+            for exchange, klines in zip(exchanges, klines_list):
+                if isinstance(klines, Exception) or not klines:
+                    logger.warning(f"No data for {symbol} on {exchange}")
                     continue
-                if kline:
-                    prices[exchange] = kline[-1]['close']
-                else:
-                    logger.warning(f"No price data for {symbol} on {exchange}")
-                    continue
+                prices[exchange] = klines[-1]['close']
 
             if len(prices) < 2:
-                return {'opportunity': None}
+                logger.warning(f"Not enough price data for {symbol} to perform arbitrage")
+                return "hold"
 
-            # Находим разницу в ценах
-            max_price_exchange = max(prices, key=prices.get)
-            min_price_exchange = min(prices, key=prices.get)
-            price_diff = prices[max_price_exchange] - prices[min_price_exchange]
-            price_diff_percentage = (price_diff / prices[min_price_exchange]) * 100
+            # Находим минимальную и максимальную цену
+            min_price = min(prices.values())
+            max_price = max(prices.values())
+            price_diff = (max_price - min_price) / min_price
 
-            # Порог для арбитража (учитываем комиссию 0.1% на каждой бирже)
-            arbitrage_threshold = 0.2  # 0.2% после учёта комиссий
-            if price_diff_percentage > arbitrage_threshold:
-                return {
-                    'opportunity': {
-                        'buy_exchange': min_price_exchange,
-                        'sell_exchange': max_price_exchange,
-                        'buy_price': prices[min_price_exchange],
-                        'sell_price': prices[max_price_exchange],
-                        'profit_percentage': price_diff_percentage
-                    }
-                }
-            return {'opportunity': None}
+            # Генерируем сигнал
+            if price_diff > self.price_diff_threshold:
+                signal = "buy"  # Покупаем на бирже с низкой ценой, продаём на бирже с высокой
+            else:
+                signal = "hold"
+
+            logger.info(f"Generated signal for {symbol}: {signal} (Price Diff: {price_diff})")
+            return signal
         except Exception as e:
-            logger.error(f"Failed to find arbitrage opportunity for {symbol}: {str(e)}")
-            raise
-
-    async def generate_signal(self, symbol: str, timeframe: str = '1m', limit: int = 1, exchange_name: str = 'mexc') -> str:
-        """Generate a trading signal based on arbitrage opportunities."""
-        try:
-            opportunity = await self.find_arbitrage_opportunity(symbol)
-            if opportunity['opportunity']:
-                logger.info(f"Arbitrage opportunity for {symbol}: Buy on {opportunity['opportunity']['buy_exchange']} at {opportunity['opportunity']['buy_price']}, Sell on {opportunity['opportunity']['sell_exchange']} at {opportunity['opportunity']['sell_price']}")
-                return "buy"  # Сигнал для покупки на бирже с низкой ценой
+            logger.error(f"Failed to generate signal for {symbol}: {str(e)}")
             return "hold"
-        except Exception as e:
-            logger.error(f"Error generating signal for {symbol}: {str(e)}")
-            raise
-
-if __name__ == "__main__":
-    # Test run
-    import asyncio
-    from data_sources.market_data import MarketData
-    from symbol_filter import SymbolFilter
-    market_state = {'volatility': 0.3}
-    market_data = MarketData(market_state)
-    strategy = ArbitrageStrategy(market_state, market_data=market_data)
-    symbol_filter = SymbolFilter(market_state, market_data=market_data)
-    
-    async def main():
-        symbols = await strategy.market_data.get_symbols('mexc')
-        symbols = await symbol_filter.filter_symbols(symbols, 'mexc')
-        
-        if symbols:
-            signal = await strategy.generate_signal(symbols[0], '1m', 1, 'mexc')
-            print(f"Signal for {symbols[0]}: {signal}")
-        else:
-            print("No symbols available for testing")
-
-    asyncio.run(main())

@@ -3,72 +3,47 @@ import os
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 import asyncio
+import numpy as np
 from utils.logging_setup import setup_logging
 from .strategy import Strategy
-from analysis.volatility_analyzer import VolatilityAnalyzer
 
 logger = setup_logging('grid_strategy')
 
 class GridStrategy(Strategy):
-    def __init__(self, market_state: dict, market_data):
-        super().__init__(market_state)
-        self.grid_levels = 5
-        self.market_data = market_data
-        self.volatility_analyzer = VolatilityAnalyzer(market_state, market_data=market_data)
+    def __init__(self, market_state: dict, market_data=None):
+        super().__init__(market_state, market_data=market_data)
+        self.grid_levels = 5  # Количество уровней сетки
+        self.grid_spacing = 0.02  # Шаг между уровнями сетки (2%)
 
     async def generate_signal(self, symbol: str, timeframe: str = '1h', limit: int = 30, exchange_name: str = 'mexc') -> str:
-        """Generate a trading signal based on grid strategy with dynamic spacing."""
+        """Generate a trading signal using a grid strategy."""
         try:
-            # Получаем данные с биржи
             klines = await self.market_data.get_klines(symbol, timeframe, limit, exchange_name)
-            if len(klines) < 1:
-                logger.warning(f"No data for {symbol} to calculate grid levels")
+            if not klines:
+                logger.warning(f"No data for {symbol} to generate grid signal")
                 return "hold"
 
-            # Динамически рассчитываем grid spacing на основе волатильности
-            symbol_volatility = self.volatility_analyzer.analyze_volatility(symbol, exchange_name)
-            grid_spacing = 0.01 * (1 + symbol_volatility)  # Базовый spacing 1%, корректируется на волатильность
+            current_price = klines[-1]['close']
+            prices = [kline['close'] for kline in klines]
+            avg_price = np.mean(prices)
 
-            # Calculate grid levels based on the last price
-            last_price = klines[-1]['close']
-            grid_base = last_price * (1 - self.grid_levels * grid_spacing / 2)
-            grid_levels = [grid_base + i * grid_spacing * last_price for i in range(self.grid_levels)]
+            # Создаём уровни сетки
+            grid_levels = []
+            for i in range(-self.grid_levels, self.grid_levels + 1):
+                level = avg_price * (1 + i * self.grid_spacing)
+                grid_levels.append(level)
 
-            # Find the closest grid level
-            price = klines[-1]['close']
-            closest_level = min(grid_levels, key=lambda x: abs(x - price))
-            
-            if price > closest_level:
-                signal = "buy"
-            elif price < closest_level:
+            # Находим ближайший уровень сетки
+            closest_level = min(grid_levels, key=lambda x: abs(x - current_price))
+
+            # Генерируем сигнал
+            if current_price > closest_level:
                 signal = "sell"
             else:
-                signal = "hold"
+                signal = "buy"
 
-            logger.info(f"Generated signal for {symbol}: {signal} (Price: {price}, Closest Level: {closest_level})")
+            logger.info(f"Generated signal for {symbol}: {signal} (Price: {current_price}, Closest Level: {closest_level})")
             return signal
         except Exception as e:
-            logger.error(f"Error generating signal for {symbol}: {str(e)}")
-            raise
-
-if __name__ == "__main__":
-    # Test run
-    import asyncio
-    from data_sources.market_data import MarketData
-    from symbol_filter import SymbolFilter
-    market_state = {'volatility': 0.3}
-    market_data = MarketData(market_state)
-    strategy = GridStrategy(market_state, market_data=market_data)
-    symbol_filter = SymbolFilter(market_state, market_data=market_data)
-    
-    async def main():
-        symbols = await strategy.market_data.get_symbols('mexc')
-        symbols = await symbol_filter.filter_symbols(symbols, 'mexc')
-        
-        if symbols:
-            signal = await strategy.generate_signal(symbols[0], '1h', 30, 'mexc')
-            print(f"Signal for {symbols[0]}: {signal}")
-        else:
-            print("No symbols available for testing")
-
-    asyncio.run(main())
+            logger.error(f"Failed to generate signal for {symbol}: {str(e)}")
+            return "hold"
