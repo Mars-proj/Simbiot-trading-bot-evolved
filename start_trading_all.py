@@ -3,10 +3,12 @@ import os
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '.')))
 
 import asyncio
+import time
 from utils.logging_setup import setup_logging
 from core import TradingBotCore
 from symbol_filter import SymbolFilter
 from data_sources.market_data import MarketData
+from learning.online_learning import OnlineLearning
 
 logger = setup_logging('start_trading_all')
 
@@ -16,60 +18,73 @@ class StartTradingAll:
         self.market_data = MarketData(market_state)
         self.core = TradingBotCore(market_state, market_data=self.market_data)
         self.symbol_filter = SymbolFilter(market_state, market_data=self.market_data)
+        self.online_learning = OnlineLearning(market_state, market_data=self.market_data)
+        self.last_retrain_time = 0
+        self.retrain_interval = 3600  # Переобучение каждые 60 минут
 
     async def start_all(self, strategies: list, account_balance: float, preferred_exchange: str = 'mexc', timeframe: str = '1h', limit: int = 30):
-        """Start trading for all symbols and strategies asynchronously, using available exchanges."""
+        """Start trading for all symbols and strategies asynchronously, with periodic retraining."""
         try:
-            # Получаем список доступных бирж
-            available_exchanges = self.market_data.get_available_exchanges()
-            if not available_exchanges:
-                logger.error("No exchanges available for trading")
-                return {}
+            while True:  # Бесконечный цикл для непрерывной торговли
+                # Получаем список доступных бирж
+                available_exchanges = self.market_data.get_available_exchanges()
+                if not available_exchanges:
+                    logger.error("No exchanges available for trading")
+                    return {}
 
-            # Выбираем биржу: предпочитаем MEXC, если доступна, иначе первую доступную
-            exchange_name = preferred_exchange if preferred_exchange in available_exchanges else available_exchanges[0]
-            logger.info(f"Using exchange: {exchange_name}")
+                # Выбираем биржу: предпочитаем MEXC, если доступна, иначе первую доступную
+                exchange_name = preferred_exchange if preferred_exchange in available_exchanges else available_exchanges[0]
+                logger.info(f"Using exchange: {exchange_name}")
 
-            # Получаем список символов с биржи
-            all_symbols = await self.market_data.get_symbols(exchange_name)
-            if not all_symbols:
-                logger.warning(f"No symbols available on {exchange_name}")
-                return {}
+                # Получаем список символов с биржи
+                all_symbols = await self.market_data.get_symbols(exchange_name)
+                if not all_symbols:
+                    logger.warning(f"No symbols available on {exchange_name}")
+                    return {}
 
-            # Применяем фильтры для выбора символов
-            self.symbol_filter.setup_default_filters(min_liquidity=1000000, max_volatility=0.5)
-            symbols = await self.symbol_filter.filter_symbols(all_symbols, exchange_name)
-            if not symbols:
-                logger.warning(f"No symbols passed the filter on {exchange_name}")
-                return {}
+                # Применяем фильтры для выбора символов
+                self.symbol_filter.setup_default_filters(min_liquidity=1000000, max_volatility=0.5)
+                symbols = await self.symbol_filter.filter_symbols(all_symbols, exchange_name)
+                if not symbols:
+                    logger.warning(f"No symbols passed the filter on {exchange_name}")
+                    return {}
 
-            # Получаем данные для каждого символа асинхронно
-            klines = {}
-            tasks = []
-            for symbol in symbols:
-                tasks.append(self.market_data.get_klines(symbol, timeframe, limit, exchange_name))
-            
-            klines_results = await asyncio.gather(*tasks, return_exceptions=True)
-            for symbol, result in zip(symbols, klines_results):
-                if isinstance(result, Exception) or not result:
-                    logger.warning(f"Skipping {symbol} due to error: {str(result) if isinstance(result, Exception) else 'No data'}")
-                    continue
-                klines[symbol] = result
+                # Периодическое переобучение ML-модели
+                current_time = time.time()
+                if current_time - self.last_retrain_time >= self.retrain_interval:
+                    logger.info("Starting periodic retraining of ML model")
+                    await self.online_learning.retrain_model(symbols, timeframe, 100, exchange_name)
+                    self.last_retrain_time = current_time
 
-            # Запускаем торговлю для каждого символа
-            results = {}
-            for symbol in klines:
-                symbol_results = {}
-                for strategy in strategies:
-                    # Динамическая корректировка баланса на основе волатильности
-                    adjusted_balance = account_balance * (1 - self.volatility / 2)
-                    
-                    trades = await self.core.run_trading(symbol, strategy, adjusted_balance, timeframe, limit, exchange_name)
-                    symbol_results[strategy] = trades
-                results[symbol] = symbol_results
-            
-            logger.info(f"Trading started for all symbols: {results}")
-            return results
+                # Получаем данные для каждого символа асинхронно
+                klines = {}
+                tasks = []
+                for symbol in symbols:
+                    tasks.append(self.market_data.get_klines(symbol, timeframe, limit, exchange_name))
+                
+                klines_results = await asyncio.gather(*tasks, return_exceptions=True)
+                for symbol, result in zip(symbols, klines_results):
+                    if isinstance(result, Exception) or not result:
+                        logger.warning(f"Skipping {symbol} due to error: {str(result) if isinstance(result, Exception) else 'No data'}")
+                        continue
+                    klines[symbol] = result
+
+                # Запускаем торговлю для каждого символа
+                results = {}
+                for symbol in klines:
+                    symbol_results = {}
+                    for strategy in strategies:
+                        # Динамическая корректировка баланса на основе волатильности
+                        adjusted_balance = account_balance * (1 - self.volatility / 2)
+                        
+                        trades = await self.core.run_trading(symbol, strategy, adjusted_balance, timeframe, limit, exchange_name)
+                        symbol_results[strategy] = trades
+                    results[symbol] = symbol_results
+                
+                logger.info(f"Trading iteration completed: {results}")
+                
+                # Пауза перед следующей итерацией (например, 5 минут)
+                await asyncio.sleep(300)
         except Exception as e:
             logger.error(f"Failed to start trading for all: {str(e)}")
             raise

@@ -52,5 +52,6 @@ graph TD
     AR --> AU[RNN Model]
     AR --> AV[Transformer Model]
     AR --> AW[Online Learning]
+    Q -->|Retrains| AW[Online Learning]
     Q --> AX[Notification Manager]
     AX --> AY[Telegram Notifier]

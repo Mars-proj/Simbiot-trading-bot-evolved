@@ -10,6 +10,7 @@ from learning.backtest_manager import BacktestManager
 from monitoring.monitoring import Monitoring
 from data_sources.market_data import MarketData
 from analysis.volatility_analyzer import VolatilityAnalyzer
+from learning.online_learning import OnlineLearning
 
 logger = setup_logging('core')
 
@@ -22,15 +23,17 @@ class TradingBotCore:
         self.monitoring = Monitoring(market_state)
         self.market_data = market_data
         self.volatility_analyzer = VolatilityAnalyzer(market_state, market_data=market_data)
+        self.online_learning = OnlineLearning(market_state, market_data=market_data)
 
     async def run_trading(self, symbol: str, strategy_name: str, account_balance: float, timeframe: str = '1h', limit: int = 30, exchange_name: str = 'mexc') -> dict:
-        """Run the trading process for a given strategy."""
+        """Run the trading process for a given strategy and retrain ML model."""
         try:
             # Получаем данные для символа
             klines = await self.market_data.get_klines(symbol, timeframe, limit, exchange_name)
             
             # Генерируем сигналы
-            signals = self.strategy_manager.generate_signals(klines)[strategy_name]
+            signals_dict = await self.strategy_manager.generate_signals(symbol, timeframe, limit, exchange_name)
+            signal = signals_dict[strategy_name]
             
             # Динамически рассчитываем стоп-лосс на основе волатильности
             symbol_volatility = await self.volatility_analyzer.analyze_volatility(symbol, exchange_name)
@@ -38,17 +41,19 @@ class TradingBotCore:
             
             # Выполняем сделки
             trades = []
-            for signal in signals:
-                if signal['signal'] in ['buy', 'sell']:
-                    trade = self.trade_executor.execute_trade(
-                        symbol=symbol,
-                        side=signal['signal'],
-                        klines=klines,
-                        entry_price=klines[-1]['close'],  # Последняя цена
-                        stop_loss=klines[-1]['close'] * (1 - stop_loss_percentage),  # Динамический стоп-лосс
-                        account_balance=account_balance
-                    )
-                    trades.append(trade)
+            if signal in ['buy', 'sell']:
+                trade = self.trade_executor.execute_trade(
+                    symbol=symbol,
+                    side=signal,
+                    klines=klines,
+                    entry_price=klines[-1]['close'],  # Последняя цена
+                    stop_loss=klines[-1]['close'] * (1 - stop_loss_percentage),  # Динамический стоп-лосс
+                    account_balance=account_balance
+                )
+                trades.append(trade)
+            
+            # Переобучаем ML-модель после каждой торговой итерации
+            await self.online_learning.retrain_model([symbol], timeframe, 100, exchange_name)
             
             logger.info(f"Trading completed: {trades}")
             return trades
