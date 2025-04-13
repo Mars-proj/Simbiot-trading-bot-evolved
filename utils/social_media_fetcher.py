@@ -17,16 +17,29 @@ class SocialMediaFetcher:
         api_secret = os.getenv('TWITTER_API_SECRET')
         access_token = os.getenv('TWITTER_ACCESS_TOKEN')
         access_token_secret = os.getenv('TWITTER_ACCESS_TOKEN_SECRET')
+        
+        # Проверяем наличие всех ключей
         if not all([api_key, api_secret, access_token, access_token_secret]):
-            logger.error("Twitter API keys not found in .env file")
-            raise ValueError("Twitter API keys not found")
-        self.auth = tweepy.OAuthHandler(api_key, api_secret)
-        self.auth.set_access_token(access_token, access_token_secret)
-        self.api = tweepy.API(self.auth)
-        self.sentiment_analyzer = pipeline("sentiment-analysis", model="distilbert-base-uncased-finetuned-sst-2-english")
+            logger.warning("Twitter API keys not found in .env file. Social media fetching will be disabled.")
+            self.api = None
+        else:
+            try:
+                self.auth = tweepy.OAuthHandler(api_key, api_secret)
+                self.auth.set_access_token(access_token, access_token_secret)
+                self.api = tweepy.API(self.auth)
+                logger.info("Twitter API initialized successfully.")
+            except Exception as e:
+                logger.warning(f"Failed to initialize Twitter API: {str(e)}. Social media fetching will be disabled.")
+                self.api = None
+        
+        self.sentiment_analyzer = pipeline("sentiment-analysis", model="distilbert-base-uncased-finetuned-sst-2-english") if self.api else None
 
     def fetch_tweets(self, query: str, count: int = 10) -> list:
         """Fetch tweets based on a query."""
+        if self.api is None:
+            logger.warning("Twitter API not initialized. Returning empty tweet list.")
+            return []
+        
         try:
             logger.info(f"Fetching tweets for query: {query}")
             tweets = self.api.search_tweets(q=query, count=count, lang='en', tweet_mode='extended')
@@ -39,6 +52,10 @@ class SocialMediaFetcher:
 
     def analyze_sentiment(self, text: str) -> float:
         """Analyze the sentiment of a given text using BERT."""
+        if self.sentiment_analyzer is None:
+            logger.warning("Sentiment analyzer not initialized due to missing Twitter API. Returning neutral sentiment.")
+            return 0.0
+        
         try:
             result = self.sentiment_analyzer(text)[0]
             score = result['score'] if result['label'] == 'POSITIVE' else -result['score']
