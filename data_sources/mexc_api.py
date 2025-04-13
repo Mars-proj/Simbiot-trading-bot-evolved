@@ -37,12 +37,13 @@ class MEXCAPI:
         try:
             params = {
                 'symbol': symbol,
-                'interval': timeframe,
+                'interval': timeframe,  # Передаём timeframe напрямую
                 'limit': limit
             }
             async with aiohttp.ClientSession() as session:
                 async with session.get(f"{self.base_url}/api/v3/klines", params=params) as response:
                     data = await response.json()
+                    logger.info(f"MEXC klines response for {symbol} with interval {timeframe}: {data}")  # Отладочный вывод
                     klines = [
                         {
                             'timestamp': int(kline[0]),
