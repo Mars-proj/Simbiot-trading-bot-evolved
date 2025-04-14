@@ -2,52 +2,69 @@ import sys
 import os
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
+import numpy as np
+import xgboost as xgb
 from utils.logging_setup import setup_logging
 
 logger = setup_logging('local_model_api')
 
 class LocalModelAPI:
-    def __init__(self, market_state: dict, model_type: str = 'xgboost'):
-        self.volatility = market_state['volatility']
-        self.model_type = model_type
-        self.model = None
+    def __init__(self, max_depth=6, n_estimators=100):
+        """Initialize the XGBoost model."""
+        self.max_depth = max_depth
+        self.n_estimators = n_estimators
+        self.model = xgb.XGBRegressor(max_depth=self.max_depth, n_estimators=self.n_estimators)
 
-    def train(self, features: list, labels: list) -> None:
-        """Train the local model (simulated)."""
+    def preprocess_data(self, klines):
+        """Preprocess klines data for XGBoost."""
         try:
-            # Симулируем обучение модели
-            self.model = {'features': features, 'labels': labels}
-            logger.info(f"Trained {self.model_type} model with {len(features)} samples")
-        except Exception as e:
-            logger.error(f"Failed to train model: {str(e)}")
-            raise
+            if len(klines) < 2:
+                logger.warning("Not enough klines data for XGBoost preprocessing")
+                return None, None
 
-    def predict(self, features: list) -> list:
-        """Make predictions using the local model (simulated)."""
+            features = []
+            targets = []
+            for i in range(len(klines) - 1):
+                kline = klines[i]
+                feature = [
+                    kline[1],  # Open
+                    kline[2],  # High
+                    kline[3],  # Low
+                    kline[4],  # Close
+                    kline[5]   # Volume
+                ]
+                features.append(feature)
+                targets.append(klines[i + 1][4])  # Next closing price
+            X = np.array(features)
+            y = np.array(targets)
+            logger.info(f"Preprocessed {len(X)} samples for XGBoost")
+            return X, y
+        except Exception as e:
+            logger.error(f"Failed to preprocess data for XGBoost: {str(e)}")
+            return None, None
+
+    def train(self, klines):
+        """Train the XGBoost model."""
         try:
-            if not self.model:
-                logger.error("Model not trained")
-                raise ValueError("Model not trained")
-
-            # Симулируем предсказание
-            predictions = [sum(feature) / len(feature) for feature in features]  # Среднее значение признаков
-            logger.info(f"Made predictions: {predictions}")
-            return predictions
+            X, y = self.preprocess_data(klines)
+            if X is None or y is None:
+                return False
+            self.model.fit(X, y)
+            logger.info("XGBoost model trained successfully")
+            return True
         except Exception as e:
-            logger.error(f"Failed to make predictions: {str(e)}")
-            raise
+            logger.error(f"Failed to train XGBoost model: {str(e)}")
+            return False
 
-if __name__ == "__main__":
-    # Test run
-    market_state = {'volatility': 0.3}
-    model_api = LocalModelAPI(market_state)
-    
-    # Симулируем данные для обучения
-    features = [[1, 2, 3], [4, 5, 6], [7, 8, 9]]
-    labels = [0, 1, 0]
-    model_api.train(features, labels)
-    
-    # Симулируем предсказание
-    test_features = [[2, 3, 4]]
-    predictions = model_api.predict(test_features)
-    print(f"Predictions: {predictions}")
+    def predict(self, klines):
+        """Predict the next price using the XGBoost model."""
+        try:
+            X, _ = self.preprocess_data(klines)
+            if X is None:
+                return None
+            prediction = self.model.predict(X[-1].reshape(1, -1))
+            logger.info(f"XGBoost prediction: {prediction[0]}")
+            return prediction[0]
+        except Exception as e:
+            logger.error(f"Failed to predict with XGBoost model: {str(e)}")
+            return None
