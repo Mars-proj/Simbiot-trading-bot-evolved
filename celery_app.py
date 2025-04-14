@@ -1,3 +1,8 @@
+import sys
+import os
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+
+import asyncio
 from celery import Celery
 from utils.logging_setup import setup_logging
 
@@ -16,31 +21,50 @@ app.conf.update(
 )
 
 @app.task
-async def fetch_klines_task(exchange_name, symbol, timeframe, limit):
+def fetch_klines_task(exchange_name, symbol, timeframe, limit):
     """Celery task to fetch klines for a symbol."""
     from data_sources.market_data import MarketData
     market_data = MarketData()
     try:
-        await market_data.initialize_exchange(exchange_name)
-        klines = await market_data.get_klines(symbol, timeframe, limit, exchange_name)
-        await market_data.close()
+        # Run async operation synchronously
+        loop = asyncio.get_event_loop()
+        if loop.is_running():
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+        loop.run_until_complete(market_data.initialize_exchange(exchange_name))
+        klines = loop.run_until_complete(market_data.get_klines(symbol, timeframe, limit, exchange_name))
+        loop.run_until_complete(market_data.close())
+        logger.info(f"Fetched klines for {symbol} on {exchange_name}")
         return klines
     except Exception as e:
         logger.error(f"Failed to fetch klines for {symbol} on {exchange_name}: {str(e)}")
         return None
+    finally:
+        if not loop.is_running():
+            loop.close()
 
 @app.task
-async def train_model_task(symbol, timeframe, limit, exchange_name):
+def train_model_task(symbol, timeframe, limit, exchange_name):
     """Celery task to train a model for a symbol."""
     from learning.online_learning import OnlineLearning
     from data_sources.market_data import MarketData
     market_data = MarketData()
     market_state = {}
     try:
-        await market_data.initialize_exchange(exchange_name)
+        # Run async operation synchronously
+        loop = asyncio.get_event_loop()
+        if loop.is_running():
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+        loop.run_until_complete(market_data.initialize_exchange(exchange_name))
         online_learning = OnlineLearning(market_state, market_data)
-        await online_learning.retrain(symbol, timeframe, limit, exchange_name)
-        await market_data.close()
+        loop.run_until_complete(online_learning.retrain(symbol, timeframe, limit, exchange_name))
+        loop.run_until_complete(market_data.close())
         logger.info(f"Model retrained for {symbol} on {exchange_name}")
+        return True
     except Exception as e:
         logger.error(f"Failed to retrain model for {symbol} on {exchange_name}: {str(e)}")
+        return False
+    finally:
+        if not loop.is_running():
+            loop.close()
