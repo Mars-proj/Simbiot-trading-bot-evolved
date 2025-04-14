@@ -148,3 +148,4 @@ class SyncMarketData:
             except Exception as e:
                 logger.error(f"Failed to close exchange connection for {exchange_name} (sync): {str(e)}")
         self.exchanges.clear()
+        logger.info("All exchanges cleared")
