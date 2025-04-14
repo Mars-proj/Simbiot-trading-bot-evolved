@@ -14,7 +14,7 @@ class StartTradingAll:
     def __init__(self, market_state: dict):
         self.market_data = MarketData(market_state)
         self.core = TradingBotCore(market_state, market_data=self.market_data)
-        self.interval = market_state.get('trading_interval', 300)  # Интервал между итерациями в секундах (по умолчанию 5 минут)
+        self.interval = market_state.get('trading_interval', 300)
 
     async def start_all(self, strategies: list, balance: float, timeframe: str, limit: int):
         """Start trading for all symbols on the first available exchange, prioritizing MEXC."""
@@ -58,13 +58,13 @@ async def main():
         'min_liquidity': 500,
         'max_volatility': 1.0,
         'liquidity_period': 240,
-        'trading_interval': 300  # Интервал в секундах (5 минут)
+        'trading_interval': 300
     }
     starter = StartTradingAll(market_state)
     strategies = ['bollinger', 'rsi', 'macd']
     balance = 10000
     timeframe = '1h'
-    limit = 100
+    limit = 200  # Увеличиваем limit с 100 до 200
 
     while True:
         try:

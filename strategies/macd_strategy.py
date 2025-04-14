@@ -20,7 +20,6 @@ class MACDStrategy(Strategy):
         if len(closes) < slow_period + signal_period:
             return 0.0, 0.0, 0.0
 
-        # EMA для быстрого и медленного периода
         def ema(data, period):
             alpha = 2 / (period + 1)
             ema_values = [data[0]]
@@ -66,7 +65,6 @@ class MACDStrategy(Strategy):
                 logger.warning(f"Not enough data for {symbol}, returning hold signal")
                 return 'hold'
 
-            # Адаптируем параметры MACD на основе волатильности
             fast_period = self.base_fast_period
             slow_period = self.base_slow_period
             signal_period = self.base_signal_period
@@ -77,14 +75,11 @@ class MACDStrategy(Strategy):
                 slow_period = max(15, min(40, slow_period))
                 logger.info(f"Adjusted MACD parameters for {symbol}: fast={fast_period}, slow={slow_period}")
 
-            # Рассчитываем MACD
             macd_line, signal_line, histogram = self.calculate_macd(closes, fast_period, slow_period, signal_period)
 
-            # Рассчитываем CCI для подтверждения тренда
             cci = self.calculate_cci(klines, period=20)
-            cci_threshold = 100  # Порог для сильного тренда
+            cci_threshold = 50  # Понижаем порог с 100 до 50
 
-            # Генерируем сигнал с фильтром CCI
             signal = 'hold'
             if macd_line > signal_line and histogram > 0 and cci > cci_threshold:
                 signal = 'buy'

@@ -12,8 +12,8 @@ class RSIStrategy(Strategy):
     def __init__(self, market_state: dict, market_data):
         super().__init__(market_state, market_data)
         self.base_period = 14
-        self.overbought = 70
-        self.oversold = 30
+        self.overbought = 65  # Понижаем с 70 до 65
+        self.oversold = 35    # Повышаем с 30 до 35
 
     def calculate_rsi(self, closes: np.ndarray, period: int) -> float:
         """Calculate RSI for the given closes."""
@@ -76,7 +76,6 @@ class RSIStrategy(Strategy):
         atr = np.mean(tr_values[:period])
         plus_di = 100 * np.mean(plus_dm[:period]) / atr if atr != 0 else 0
         minus_di = 100 * np.mean(minus_dm[:period]) / atr if atr != 0 else 0
-        # Исправляем расчёт ADX: добавляем проверку на нулевую сумму
         if plus_di + minus_di == 0:
             dx = 0
         else:
@@ -118,7 +117,7 @@ class RSIStrategy(Strategy):
             rsi = self.calculate_rsi(closes, period)
 
             adx = self.calculate_adx(klines, period=14)
-            adx_threshold = 25
+            adx_threshold = 20  # Понижаем порог с 25 до 20
 
             signal = 'hold'
             if rsi > self.overbought and adx > adx_threshold:

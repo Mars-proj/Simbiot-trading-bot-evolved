@@ -46,27 +46,22 @@ class BollingerStrategy(Strategy):
                 logger.warning(f"Not enough data for {symbol}, returning hold signal")
                 return 'hold'
 
-            # Адаптируем параметры на основе волатильности
             period = self.base_period
             deviation = self.base_deviation
             if volatility is not None:
-                # Увеличиваем период и отклонение при высокой волатильности
                 period = int(self.base_period * (1 + volatility))
                 deviation = self.base_deviation * (1 + volatility)
                 logger.info(f"Adjusted Bollinger parameters for {symbol}: period={period}, deviation={deviation}")
 
-            # Рассчитываем Bollinger Bands
             sma = np.mean(closes[-period:])
             std = np.std(closes[-period:])
             upper_band = sma + deviation * std
             lower_band = sma - deviation * std
             current_price = closes[-1]
 
-            # Рассчитываем ATR для фильтрации ложных сигналов
             atr = self.calculate_atr(klines[-period:], period=14)
-            atr_threshold = atr * 1.5  # Порог для фильтрации
+            atr_threshold = atr * 0.5  # Понижаем порог с 1.5 до 0.5
 
-            # Генерируем сигнал с фильтром ATR
             signal = 'hold'
             if current_price > upper_band and (current_price - sma) > atr_threshold:
                 signal = 'sell'

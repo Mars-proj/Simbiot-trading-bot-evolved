@@ -4,6 +4,7 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 import asyncio
 import numpy as np
+from sklearn.preprocessing import StandardScaler
 from utils.logging_setup import setup_logging
 from models.local_model_api import LocalModelAPI
 from models.transformer_model import TransformerModel
@@ -22,6 +23,7 @@ class OnlineLearning:
         }
         self.current_model = 'xgboost'
         self.market_index_symbol = 'BTCUSDT'
+        self.scaler = StandardScaler()
 
     async def fetch_market_index_data(self, timeframe: str, limit: int, exchange_name: str):
         """Fetch market index data (e.g., BTCUSDT)."""
@@ -195,6 +197,7 @@ class OnlineLearning:
             market_klines = await self.fetch_market_index_data(timeframe, limit, exchange_name)
 
             features_list = []
+            valid_indices = []
             for i in range(len(klines) - 1):
                 features = await self.calculate_technical_indicators(
                     klines[:i+1], 
@@ -205,13 +208,17 @@ class OnlineLearning:
                 )
                 if features:
                     features_list.append(features)
+                    valid_indices.append(i)
 
             if not features_list:
                 logger.warning(f"No features generated for {symbol}, skipping retraining")
                 return
 
             data = np.array(features_list)
-            labels = np.array([1 if klines[i+1]['close'] > klines[i]['close'] else 0 for i in range(len(klines)-1)])
+            # Нормализуем фичи
+            data = self.scaler.fit_transform(data)
+            all_labels = np.array([1 if klines[i+1]['close'] > klines[i]['close'] else 0 for i in range(len(klines)-1)])
+            labels = all_labels[valid_indices]
 
             try:
                 model.train(data, labels)
@@ -249,6 +256,8 @@ class OnlineLearning:
                 return []
 
             data = np.array([features])
+            # Нормализуем фичи
+            data = self.scaler.transform(data)
             predictions = model.predict(data)
             logger.info(f"Predictions made with {self.current_model} for {symbol}: {predictions}")
             if isinstance(predictions, np.ndarray):
