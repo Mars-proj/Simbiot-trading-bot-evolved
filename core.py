@@ -28,10 +28,10 @@ class TradingBotCore:
         self.volatility_analyzer = VolatilityAnalyzer(self.market_state, self.market_data)
         self.online_learning = SyncOnlineLearning(self.market_state, self.market_data)
         self.strategy_manager = StrategyManager(self.market_state, self.market_data, self.volatility_analyzer, self.online_learning)
-        self.risk_manager = RiskManager()
+        self.risk_manager = RiskManager(self.volatility_analyzer)
         self.position_manager = PositionManager()
         self.order_manager = OrderManager()
-        self.risk_calculator = RiskCalculator()
+        self.risk_calculator = RiskCalculator(self.volatility_analyzer)
         self.trade_executor = TradeExecutor()
 
     def get_symbols(self):
@@ -82,7 +82,7 @@ class TradingBotCore:
 
     def execute_trade(self, signal):
         """Execute a trade based on the signal."""
-        risk = self.risk_calculator.calculate_risk(signal)
+        risk = self.risk_calculator.calculate_risk(signal, klines)
         if self.risk_manager.validate_risk(risk):
             position = self.trade_executor.execute(signal)
             self.position_manager.add_position(signal['symbol'], position)
