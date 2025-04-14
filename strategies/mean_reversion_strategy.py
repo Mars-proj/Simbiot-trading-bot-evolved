@@ -2,7 +2,6 @@ import sys
 import os
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-import asyncio
 import numpy as np
 from utils.logging_setup import setup_logging
 from .strategy import Strategy
@@ -10,38 +9,60 @@ from .strategy import Strategy
 logger = setup_logging('mean_reversion_strategy')
 
 class MeanReversionStrategy(Strategy):
-    def __init__(self, market_state: dict, market_data=None):
-        super().__init__(market_state, market_data=market_data)
-        self.window = 20  # Период для расчёта средней
-        self.std_multiplier = 2  # Множитель стандартного отклонения
+    def __init__(self, market_state, market_data, volatility_analyzer):
+        super().__init__(market_state, market_data)
+        self.volatility_analyzer = volatility_analyzer
+        self.min_order_value = 10.50  # $10 + 5% (hard threshold)
 
-    async def generate_signal(self, symbol: str, timeframe: str = '1h', limit: int = 30, exchange_name: str = 'mexc') -> str:
-        """Generate a trading signal using mean reversion."""
+    async def generate_signal(self, symbol: str, timeframe: str, limit: int, exchange_name: str, klines=None):
+        """Generate a mean reversion signal."""
         try:
-            klines = await self.market_data.get_klines(symbol, timeframe, limit, exchange_name)
-            if len(klines) < self.window:
-                logger.warning(f"Not enough data for {symbol} to calculate mean reversion")
-                return "hold"
+            if klines is None:
+                klines = await self.market_data.get_klines(symbol, timeframe, limit, exchange_name)
+            if not klines or len(klines) < 20:
+                logger.warning(f"Insufficient klines data for {symbol}")
+                return None
 
-            close_prices = [kline['close'] for kline in klines]
-            close_array = np.array(close_prices[-self.window:])
+            prices = np.array([kline[4] for kline in klines])  # Closing prices
+            volatility = self.volatility_analyzer.get_volatility(symbol, timeframe, limit, exchange_name)
+            
+            # Dynamic period and deviation threshold based on volatility
+            period = int(20 * (1 + volatility))  # Adjust period dynamically
+            deviation_threshold = 2 * volatility  # Dynamic threshold
 
-            mean = np.mean(close_array)
-            std = np.std(close_array)
-            upper_bound = mean + self.std_multiplier * std
-            lower_bound = mean - self.std_multiplier * std
-            current_price = close_prices[-1]
+            # Calculate mean and standard deviation
+            mean = np.mean(prices[-period:])
+            std = np.std(prices[-period:])
+            current_price = prices[-1]
 
-            # Генерируем сигнал
-            if current_price > upper_bound:
-                signal = "sell"
-            elif current_price < lower_bound:
-                signal = "buy"
+            # Generate signal
+            if current_price > mean + deviation_threshold * std:
+                signal_type = 'sell'
+            elif current_price < mean - deviation_threshold * std:
+                signal_type = 'buy'
             else:
-                signal = "hold"
+                logger.info(f"No mean reversion signal for {symbol}, price within bounds")
+                return None
 
-            logger.info(f"Generated signal for {symbol}: {signal} (Price: {current_price}, Upper: {upper_bound}, Lower: {lower_bound})")
+            # Calculate trade size based on deviation and volatility
+            deviation = abs(current_price - mean) / std
+            trade_size = deviation * (1 + volatility) * 50  # Dynamic trade size
+            if trade_size * current_price < self.min_order_value:
+                logger.warning(f"Trade size {trade_size} for {symbol} below minimum order value {self.min_order_value}")
+                return None
+
+            signal = {
+                'symbol': symbol,
+                'strategy': 'mean_reversion',
+                'signal': signal_type,
+                'entry_price': current_price,
+                'trade_size': trade_size,
+                'timeframe': timeframe,
+                'limit': limit,
+                'exchange_name': exchange_name
+            }
+            logger.info(f"Generated mean reversion signal: {signal}")
             return signal
         except Exception as e:
-            logger.error(f"Failed to generate signal for {symbol}: {str(e)}")
-            return "hold"
+            logger.error(f"Failed to generate mean reversion signal for {symbol}: {str(e)}")
+            return None
