@@ -39,22 +39,7 @@ def fetch_klines_task(exchange_name, symbol, timeframe, limit):
 def train_model_task(symbol, timeframe, limit, exchange_name):
     """Celery task to train a model for a symbol synchronously."""
     from learning.online_learning import SyncOnlineLearning
-    from data LOOP = asyncio.get_event_loop()
-    if LOOP.is_running():
-        LOOP = asyncio.new_event_loop()
-        asyncio.set_event_loop(LOOP)
-    LOOP.run_until_complete(market_data.initialize_exchange(exchange_name))
-    online_learning = OnlineLearning(market_state, market_data)
-    LOOP.run_until_complete(online_learning.retrain(symbol, timeframe, limit, exchange_name))
-    LOOP.run_until_complete(market_data.close())
-    logger.info(f"Model retrained for {symbol} on {exchange_name}")
-    return True
-except Exception as e:
-    logger.error(f"Failed to retrain model for {symbol} on {exchange_name}: {str(e)}")
-    return False
-finally:
-    if not LOOP.is_running():
-        LOOP.close()_sources.market_data import SyncMarketData
+    from data_sources.market_data import SyncMarketData
     market_data = SyncMarketData()
     market_state = {}
     try:
