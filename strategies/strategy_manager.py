@@ -12,21 +12,30 @@ from .ml_strategy import MLStrategy
 from .arbitrage_strategy import ArbitrageStrategy
 from .mean_reversion_strategy import MeanReversionStrategy
 from .grid_strategy import GridStrategy
+from .breakout_strategy import BreakoutStrategy
+from .scalping_strategy import ScalpingStrategy
+from .trend_strategy import TrendStrategy
+from .volatility_strategy import VolatilityStrategy
 
 logger = setup_logging('strategy_manager')
 
 class StrategyManager:
-    def __init__(self, market_state, market_data):
+    def __init__(self, market_state, market_data, volatility_analyzer):
         self.market_state = market_state
         self.market_data = market_data
+        self.volatility_analyzer = volatility_analyzer
         self.strategies = [
-            BollingerStrategy(market_state, market_data),
-            RSIStrategy(market_state, market_data),
-            MACDStrategy(market_state, market_data),
-            MLStrategy(market_state, market_data),
-            ArbitrageStrategy(market_state, market_data),
-            MeanReversionStrategy(market_state, market_data),
-            GridStrategy(market_state, market_data)
+            BollingerStrategy(market_state, market_data, volatility_analyzer),
+            RSIStrategy(market_state, market_data, volatility_analyzer),
+            MACDStrategy(market_state, market_data, volatility_analyzer),
+            MLStrategy(market_state, market_data, volatility_analyzer, None),  # OnlineLearning will be injected later
+            ArbitrageStrategy(market_state, market_data, volatility_analyzer),
+            MeanReversionStrategy(market_state, market_data, volatility_analyzer),
+            GridStrategy(market_state, market_data, volatility_analyzer),
+            BreakoutStrategy(market_state, market_data, volatility_analyzer),
+            ScalpingStrategy(market_state, market_data, volatility_analyzer),
+            TrendStrategy(market_state, market_data, volatility_analyzer),
+            VolatilityStrategy(market_state, market_data, volatility_analyzer)
         ]
 
     async def generate_signals(self, symbol: str, timeframe: str, limit: int, exchange_name: str, klines=None):
