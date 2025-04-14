@@ -8,46 +8,56 @@ from .strategy import Strategy
 logger = setup_logging('ml_strategy')
 
 class MLStrategy(Strategy):
-    def __init__(self, market_state: dict, market_data):
-        super().__init__(market_state, market_data)
-        self.min_order_size = 0.001  # Минимальный размер ордера (жёсткий порог)
+    def __init__(self, market_state, market_data, volatility_analyzer, online_learning):
+        super().__init__(market_state, market_data, volatility_analyzer)
+        self.online_learning = online_learning
+        self.min_order_value = 10.50  # $10 + 5% (hard threshold)
 
-    async def generate_signal(self, symbol: str, timeframe: str, limit: int, exchange_name: str, predictions=None, volatility=None) -> str:
-        """Generate a trading signal using ML predictions with dynamic thresholds."""
+    async def generate_signal(self, symbol: str, timeframe: str, limit: int, exchange_name: str, klines=None):
+        """Generate an ML-based signal."""
         try:
-            if not predictions:
-                logger.warning(f"No predictions for {symbol}, returning hold signal")
-                return 'hold'
+            if klines is None:
+                klines = await self.market_data.get_klines(symbol, timeframe, limit, exchange_name)
+            if not klines or len(klines) < 20:
+                logger.warning(f"Insufficient klines data for {symbol}")
+                return None
 
-            prediction = predictions[0] if isinstance(predictions, list) and predictions else 0.5
+            current_price = klines[-1][4]
+            volatility = self.volatility_analyzer.get_volatility(symbol, timeframe, limit, exchange_name)
 
-            # Динамический порог на основе волатильности
-            buy_threshold = 0.5 + (volatility * 0.2) if volatility else 0.6  # Чем выше волатильность, тем выше порог для покупки
-            sell_threshold = 0.5 - (volatility * 0.2) if volatility else 0.4  # Чем выше волатильность, тем ниже порог для продажи
+            # Get ML prediction
+            prediction = await self.online_learning.predict(symbol, timeframe, limit, exchange_name)
+            if prediction is None:
+                logger.warning(f"No ML prediction for {symbol}")
+                return None
 
-            buy_threshold = max(0.55, min(0.75, buy_threshold))
-            sell_threshold = max(0.25, min(0.45, sell_threshold))
+            # Generate signal based on prediction
+            if prediction > current_price * (1 + volatility * 0.01):
+                signal_type = 'buy'
+            elif prediction < current_price * (1 - volatility * 0.01):
+                signal_type = 'sell'
+            else:
+                logger.info(f"No ML signal for {symbol}, prediction={prediction}, current_price={current_price}")
+                return None
 
-            signal = 'hold'
-            if prediction > buy_threshold:
-                signal = 'buy'
-            elif prediction < sell_threshold:
-                signal = 'sell'
+            # Calculate trade size based on volatility
+            trade_size = (volatility * 50) / current_price
+            if trade_size * current_price < self.min_order_value:
+                logger.warning(f"Trade size {trade_size} for {symbol} below minimum order value {self.min_order_value}")
+                return None
 
-            # Проверка минимального размера ордера
-            if signal != 'hold':
-                klines = await self.market_data.get_klines(symbol, timeframe, 1, exchange_name)
-                if not klines:
-                    logger.warning(f"No klines data for {symbol}, skipping trade")
-                    return 'hold'
-                current_price = klines[-1]['close']
-                quantity = 0.1 / current_price  # Пример расчёта количества (10% от баланса)
-                if quantity < self.min_order_size:
-                    logger.warning(f"Order size {quantity} for {symbol} is below minimum {self.min_order_size}, skipping trade")
-                    signal = 'hold'
-
-            logger.info(f"ML signal for {symbol}: {signal}, prediction={prediction}, buy_threshold={buy_threshold}, sell_threshold={sell_threshold}")
+            signal = {
+                'symbol': symbol,
+                'strategy': 'ml',
+                'signal': signal_type,
+                'entry_price': current_price,
+                'trade_size': trade_size,
+                'timeframe': timeframe,
+                'limit': limit,
+                'exchange_name': exchange_name
+            }
+            logger.info(f"Generated ML signal: {signal}")
             return signal
         except Exception as e:
             logger.error(f"Failed to generate ML signal for {symbol}: {str(e)}")
-            return 'hold'
+            return None
