@@ -65,6 +65,14 @@ This document provides key information about the Simbiot Trading Bot system, inc
   - `strategies/volatility_strategy.py`: Volatility-based strategy.
   - `__init__.py`
 
+- **Risk Management (5):**
+  - `risk_management/risk_manager.py`: Dynamic risk calculation.
+  - `risk_management/position_manager.py`: Position size management.
+  - `risk_management/risk_calculator.py`: Risk calculation utilities.
+  - `risk_management/trade_executor.py`: Trade execution with risk controls.
+  - `risk_management/trade_logger.py`: Logging trades for risk analysis.
+  - `__init__.py`
+
 - **Utils (11):**
   - `utils/logging_setup.py`: Logging setup.
   - `utils/data_utils.py`: Data processing utilities.
@@ -80,13 +88,13 @@ This document provides key information about the Simbiot Trading Bot system, inc
   - `__init__.py`
 
 - **Unused Modules (29):**
-  - Located in `unused_modules/`. These modules are preserved for potential future use. Examples include `arbitrage_strategy.py`, `celery_app.py`, `risk_manager.py`, etc. Useful settings from these modules are documented in `CONFIG_SETTINGS.md`.
+  - Located in `unused_modules/`. These modules are preserved for potential future use. Examples include `arbitrage_strategy.py`, `celery_app.py`, etc. Useful settings from these modules are documented in `CONFIG_SETTINGS.md`.
 
 ## Goals and Compliance
 - **Automated Trading:** Fully supported by core modules and strategies.
 - **Dynamic Strategies:** Strategies adapt thresholds based on volatility.
 - **Machine Learning:** Supported by `online_learning.py` and models.
 - **Multiple Exchanges:** Supported by multiple API modules in `data_sources/`.
-- **Risk Management:** Implemented in `core.py` (stop-loss, position monitoring).
+- **Risk Management:** Enhanced with `risk_management/` modules (stop-loss, position monitoring).
 - **Logging and Monitoring:** Supported by `logging_setup.py`.
 - **Scalability:** System is ready for improvements (Redis, Celery, etc.).
