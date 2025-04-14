@@ -5,11 +5,13 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 import asyncio
 import pickle
 import os.path
+import time
 from utils.logging_setup import setup_logging
 from strategies.strategy_manager import StrategyManager
 from learning.online_learning import OnlineLearning
 from risk_management.risk_manager import RiskManager
 from risk_management.position_manager import PositionManager
+from volatility_analyzer import VolatilityAnalyzer
 
 logger = setup_logging('core')
 
@@ -17,9 +19,10 @@ class TradingBotCore:
     def __init__(self, market_state, market_data):
         self.market_state = market_state
         self.market_data = market_data
-        self.strategy_manager = StrategyManager(self.market_state, self.market_data)
+        self.volatility_analyzer = VolatilityAnalyzer()  # Initialize VolatilityAnalyzer
+        self.strategy_manager = StrategyManager(self.market_state, self.market_data, self.volatility_analyzer)
         self.online_learning = OnlineLearning(self.market_state, self.market_data)
-        self.risk_manager = RiskManager(self.market_data)
+        self.risk_manager = RiskManager(self.volatility_analyzer)
         self.position_manager = PositionManager()
 
     async def get_symbols(self, exchange_name: str, timeframe: str, limit: int):
@@ -75,7 +78,7 @@ class TradingBotCore:
             entry_price = signal.get('entry_price', 0)
 
             # Calculate stop-loss based on volatility
-            volatility = self.risk_manager.volatility_analyzer.get_volatility(symbol, signal['timeframe'], signal['limit'], signal['exchange_name'])
+            volatility = self.volatility_analyzer.get_volatility(symbol, signal['timeframe'], signal['limit'], signal['exchange_name'])
             stop_loss = self.risk_manager.calculate_stop_loss(entry_price, volatility)
 
             # Simulate trade execution
