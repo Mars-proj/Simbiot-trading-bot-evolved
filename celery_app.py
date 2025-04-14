@@ -30,34 +30,38 @@ app.conf.update(
 @app.task
 def fetch_klines_task(exchange_name, symbol, timeframe, limit):
     """Celery task to fetch klines for a symbol synchronously."""
-    from data_sources.market_data import SyncMarketData
+    from data_sources import market_data  # Импортируем модуль напрямую
     logger.info(f"Starting fetch_klines_task for {symbol} on {exchange_name}")
-    market_data = SyncMarketData()
+    market_data_instance = market_data.SyncMarketData()
     try:
-        market_data.initialize_exchange(exchange_name)
-        klines = market_data.get_klines(symbol, timeframe, limit, exchange_name)
+        market_data_instance.initialize_exchange(exchange_name)
+        klines = market_data_instance.get_klines(symbol, timeframe, limit, exchange_name)
         logger.info(f"Fetched klines for {symbol} on {exchange_name}, result: {type(klines)}")
+        if isinstance(klines, (list, type(None))):
+            logger.info(f"Returning klines: {klines[:5] if klines else None}")
+        else:
+            logger.error(f"Unexpected type for klines: {type(klines)}")
         return klines
     except Exception as e:
         logger.error(f"Failed to fetch klines for {symbol} on {exchange_name}: {str(e)}")
         return None
     finally:
         logger.info(f"Closing market_data for {symbol} on {exchange_name} in fetch_klines_task")
-        market_data.close()
+        market_data_instance.close()
         logger.info(f"Closed market_data for {symbol} on {exchange_name} in fetch_klines_task")
 
 @app.task
 def train_model_task(symbol, timeframe, limit, exchange_name):
     """Celery task to train a model for a symbol synchronously."""
     from learning.online_learning import SyncOnlineLearning
-    from data_sources.market_data import SyncMarketData
+    from data_sources import market_data  # Импортируем модуль напрямую
     logger.info(f"Starting train_model_task for {symbol} on {exchange_name}")
-    market_data = SyncMarketData()
+    market_data_instance = market_data.SyncMarketData()
     market_state = {}
     try:
-        market_data.initialize_exchange(exchange_name)
+        market_data_instance.initialize_exchange(exchange_name)
         logger.info(f"Initialized exchange for {exchange_name}")
-        online_learning = SyncOnlineLearning(market_state, market_data)
+        online_learning = SyncOnlineLearning(market_state, market_data_instance)
         logger.info(f"Created SyncOnlineLearning instance for {symbol}")
         result = online_learning.retrain(symbol, timeframe, limit, exchange_name)
         logger.info(f"Model retrained for {symbol} on {exchange_name}, result: {result}, type: {type(result)}")
@@ -67,5 +71,5 @@ def train_model_task(symbol, timeframe, limit, exchange_name):
         return False
     finally:
         logger.info(f"Closing market_data for {symbol} on {exchange_name}")
-        market_data.close()
+        market_data_instance.close()
         logger.info(f"Closed market_data for {symbol} on {exchange_name}")
