@@ -17,6 +17,7 @@ logger = setup_logging('core')
 class TradingBotCore:
     def __init__(self, market_state: dict, market_data):
         self.market_state = market_state
+        self.market_data = market_data  # Сохраняем market_data как атрибут
         self.strategy_manager = StrategyManager(market_state, market_data=market_data)
         self.online_learning = OnlineLearning(market_state, market_data=market_data)
         self.volatility_analyzer = VolatilityAnalyzer(market_state, market_data=market_data)
@@ -25,9 +26,9 @@ class TradingBotCore:
         self.risk_params = {
             'max_position_size': 0.1,
             'stop_loss_factor': 0.02,
-            'trailing_stop_factor': 0.01,  # Трейлинг-стоп на уровне 1%
+            'trailing_stop_factor': 0.01,
         }
-        self.positions = {}  # Храним открытые позиции
+        self.positions = {}
         self.positions_file = "/root/trading_bot/cache/positions.pkl"
         self.load_positions()
 
@@ -70,7 +71,6 @@ class TradingBotCore:
 
         current_price = klines[-1]['close']
 
-        # Обновляем трейлинг-стоп
         if signal == 'buy':
             new_trailing_stop = current_price * (1 - self.risk_params['trailing_stop_factor'])
             trailing_stop_price = max(trailing_stop_price, new_trailing_stop)
@@ -80,7 +80,6 @@ class TradingBotCore:
 
         position['trailing_stop_price'] = trailing_stop_price
 
-        # Проверяем стоп-лосс или трейлинг-стоп
         should_close = False
         if signal == 'buy':
             if current_price <= stop_loss_price or current_price <= trailing_stop_price:
@@ -104,10 +103,8 @@ class TradingBotCore:
         try:
             trades = []
 
-            # Сначала мониторим открытые позиции
             await self.monitor_positions(symbol, exchange_name, timeframe)
 
-            # Если позиция уже открыта, пропускаем
             if symbol in self.positions:
                 logger.info(f"Position already open for {symbol}, skipping new trade")
                 return trades
@@ -143,7 +140,6 @@ class TradingBotCore:
                             logger.error(f"Failed to execute {signal} order for {symbol}")
                             continue
 
-                        # Сохраняем позицию
                         position = {
                             'symbol': symbol,
                             'signal': signal,
