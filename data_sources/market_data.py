@@ -3,7 +3,8 @@ import os
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 import asyncio
-import ccxt.async_support as ccxt
+import ccxt.async_support as ccxt_async
+import ccxt
 from utils.logging_setup import setup_logging
 from utils.cache_manager import CacheManager
 
@@ -17,7 +18,7 @@ class MarketData:
     async def initialize_exchange(self, exchange_name: str, api_key: str = None, api_secret: str = None):
         """Initialize an exchange."""
         try:
-            exchange_class = getattr(ccxt, exchange_name)
+            exchange_class = getattr(ccxt_async, exchange_name)
             exchange = exchange_class({
                 'apiKey': api_key,
                 'secret': api_secret,
@@ -73,4 +74,55 @@ class MarketData:
                 logger.info(f"Closed connection for {exchange_name}")
             except Exception as e:
                 logger.error(f"Failed to close exchange connection for {exchange_name}: {str(e)}")
+        self.exchanges.clear()
+
+class SyncMarketData:
+    def __init__(self):
+        self.exchanges = {}
+        self.cache = CacheManager()
+
+    def initialize_exchange(self, exchange_name: str, api_key: str = None, api_secret: str = None):
+        """Initialize an exchange synchronously."""
+        try:
+            exchange_class = getattr(ccxt, exchange_name)
+            exchange = exchange_class({
+                'apiKey': api_key,
+                'secret': api_secret,
+                'enableRateLimit': True,
+            })
+            exchange.load_markets()
+            self.exchanges[exchange_name] = exchange
+            logger.info(f"Successfully initialized {exchange_name} (sync)")
+        except Exception as e:
+            logger.error(f"Failed to initialize {exchange_name} (sync): {str(e)}")
+            raise
+
+    def get_klines(self, symbol: str, timeframe: str, limit: int, exchange_name: str):
+        """Fetch klines (candlestick data) for a symbol with caching synchronously."""
+        cache_key = f"{exchange_name}:{symbol}:{timeframe}:{limit}"
+        cached_klines = self.cache.get(cache_key)
+        if cached_klines is not None:
+            return cached_klines
+
+        if exchange_name not in self.exchanges:
+            logger.error(f"Exchange {exchange_name} not initialized (sync)")
+            return None
+
+        exchange = self.exchanges[exchange_name]
+        try:
+            klines = exchange.fetch_ohlcv(symbol, timeframe, limit=limit)
+            self.cache.set(cache_key, klines, ttl=600)  # Cache for 10 minutes
+            return klines
+        except Exception as e:
+            logger.error(f"Failed to fetch klines for {symbol} on {exchange_name} (sync): {str(e)}")
+            return None
+
+    def close(self):
+        """Close all exchange connections synchronously."""
+        for exchange_name, exchange in self.exchanges.items():
+            try:
+                exchange.close()
+                logger.info(f"Closed connection for {exchange_name} (sync)")
+            except Exception as e:
+                logger.error(f"Failed to close exchange connection for {exchange_name} (sync): {str(e)}")
         self.exchanges.clear()
