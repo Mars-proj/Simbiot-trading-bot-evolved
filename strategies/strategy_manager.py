@@ -20,15 +20,16 @@ from .volatility_strategy import VolatilityStrategy
 logger = setup_logging('strategy_manager')
 
 class StrategyManager:
-    def __init__(self, market_state, market_data, volatility_analyzer):
+    def __init__(self, market_state, market_data, volatility_analyzer, online_learning):
         self.market_state = market_state
         self.market_data = market_data
         self.volatility_analyzer = volatility_analyzer
+        self.online_learning = online_learning
         self.strategies = [
             BollingerStrategy(market_state, market_data, volatility_analyzer),
             RSIStrategy(market_state, market_data, volatility_analyzer),
             MACDStrategy(market_state, market_data, volatility_analyzer),
-            MLStrategy(market_state, market_data, volatility_analyzer, None),  # OnlineLearning will be injected later
+            MLStrategy(market_state, market_data, volatility_analyzer, online_learning),
             ArbitrageStrategy(market_state, market_data, volatility_analyzer),
             MeanReversionStrategy(market_state, market_data, volatility_analyzer),
             GridStrategy(market_state, market_data, volatility_analyzer),
