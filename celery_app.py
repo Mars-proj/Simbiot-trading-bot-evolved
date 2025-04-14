@@ -45,9 +45,9 @@ def train_model_task(symbol, timeframe, limit, exchange_name):
     try:
         market_data.initialize_exchange(exchange_name)
         online_learning = SyncOnlineLearning(market_state, market_data)
-        online_learning.retrain(symbol, timeframe, limit, exchange_name)
-        logger.info(f"Model retrained for {symbol} on {exchange_name}")
-        return True
+        result = online_learning.retrain(symbol, timeframe, limit, exchange_name)
+        logger.info(f"Model retrained for {symbol} on {exchange_name}, result: {result}")
+        return result
     except Exception as e:
         logger.error(f"Failed to retrain model for {symbol} on {exchange_name}: {str(e)}")
         return False
