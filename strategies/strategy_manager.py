@@ -1,9 +1,3 @@
-import sys
-import os
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-
-import asyncio
-import numpy as np
 from utils.logging_setup import setup_logging
 from .bollinger_strategy import BollingerStrategy
 from .rsi_strategy import RSIStrategy
@@ -16,6 +10,7 @@ from .breakout_strategy import BreakoutStrategy
 from .scalping_strategy import ScalpingStrategy
 from .trend_strategy import TrendStrategy
 from .volatility_strategy import VolatilityStrategy
+from .signal_generator import SignalGenerator
 
 logger = setup_logging('strategy_manager')
 
@@ -29,25 +24,26 @@ class StrategyManager:
             BollingerStrategy(market_state, market_data, volatility_analyzer),
             RSIStrategy(market_state, market_data, volatility_analyzer),
             MACDStrategy(market_state, market_data, volatility_analyzer),
-            MLStrategy(market_state, market_data, volatility_analyzer, online_learning),
+            MLStrategy(market_state, market_data, volatility_analyzer, self.online_learning),
             ArbitrageStrategy(market_state, market_data, volatility_analyzer),
             MeanReversionStrategy(market_state, market_data, volatility_analyzer),
             GridStrategy(market_state, market_data, volatility_analyzer),
             BreakoutStrategy(market_state, market_data, volatility_analyzer),
             ScalpingStrategy(market_state, market_data, volatility_analyzer),
             TrendStrategy(market_state, market_data, volatility_analyzer),
-            VolatilityStrategy(market_state, market_data, volatility_analyzer)
+            VolatilityStrategy(market_state, market_data, volatility_analyzer),
+            SignalGenerator(market_state, market_data, volatility_analyzer)
         ]
 
-    async def generate_signals(self, symbol: str, timeframe: str, limit: int, exchange_name: str, klines=None):
+    def generate_signals(self, symbol, klines, prediction):
         """Generate signals from all strategies."""
         try:
             signals = []
             for strategy in self.strategies:
-                signal = await strategy.generate_signal(symbol, timeframe, limit, exchange_name, klines)
+                signal = strategy.generate_signal(symbol, klines, "1m", 200, "mexc")
                 if signal:
                     signals.append(signal)
-            logger.info(f"Generated {len(signals)} signals for {symbol}")
+            logger.info(f"Generated signals for {symbol}: {signals}")
             return signals
         except Exception as e:
             logger.error(f"Failed to generate signals for {symbol}: {str(e)}")
