@@ -90,7 +90,10 @@ class SyncMarketData:
                 'secret': api_secret,
                 'enableRateLimit': True,
             })
-            exchange.load_markets()
+            markets = exchange.load_markets()
+            if asyncio.iscoroutine(markets):
+                logger.error(f"load_markets returned a coroutine for {exchange_name}")
+                raise RuntimeError("load_markets is not synchronous")
             self.exchanges[exchange_name] = exchange
             logger.info(f"Successfully initialized {exchange_name} (sync)")
         except Exception as e:
@@ -111,7 +114,6 @@ class SyncMarketData:
         exchange = self.exchanges[exchange_name]
         try:
             klines = exchange.fetch_ohlcv(symbol, timeframe, limit=limit)
-            # Check if the result is a coroutine (just in case)
             if asyncio.iscoroutine(klines):
                 logger.error(f"fetch_ohlcv returned a coroutine for {symbol} on {exchange_name}")
                 return None
