@@ -1,3 +1,4 @@
+import os
 import ccxt.async_support as ccxt
 from utils.logging_setup import setup_logging
 
@@ -8,7 +9,7 @@ class TradeExecutor:
         self.exchange_name = exchange_name
         self.exchange = ccxt.mexc({
             'enableRateLimit': True,
-            'apiKey': os.getenv('MEXC_API_KEY'),  # Укажи свои API-ключи в переменных окружения
+            'apiKey': os.getenv('MEXC_API_KEY'),
             'secret': os.getenv('MEXC_API_SECRET'),
         })
         logger.info(f"TradeExecutor initialized for {exchange_name}")
@@ -17,11 +18,10 @@ class TradeExecutor:
         """Execute a trade asynchronously."""
         try:
             symbol = signal['symbol']
-            side = signal['signal']  # "buy" или "sell"
+            side = signal['signal']
             amount = signal['trade_size']
             price = signal['entry_price']
 
-            # Размещаем ордер на бирже
             order = await self.exchange.create_limit_order(
                 symbol=symbol,
                 side=side,
@@ -29,7 +29,6 @@ class TradeExecutor:
                 price=price
             )
 
-            # Добавляем стоп-лосс, если указан
             if 'stop_loss' in signal:
                 stop_loss_price = signal['stop_loss']
                 stop_order = await self.exchange.create_order(
