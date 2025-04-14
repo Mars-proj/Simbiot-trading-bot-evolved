@@ -2,97 +2,87 @@ import sys
 import os
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-import asyncio
-import pickle
-import os.path
 import time
 from utils.logging_setup import setup_logging
-from strategies.strategy_manager import StrategyManager
-from learning.online_learning import OnlineLearning
-from risk_management.risk_manager import RiskManager
-from risk_management.position_manager import PositionManager
+from symbol_filter import SymbolFilter
 from volatility_analyzer import VolatilityAnalyzer
+from learning.online_learning import SyncOnlineLearning
+from strategies import StrategyManager
+from data_sources.mexc_api import MEXCAPI
+from risk_management import RiskManager, PositionManager
+from trading import OrderManager, RiskCalculator, TradeExecutor
 
 logger = setup_logging('core')
 
 class TradingBotCore:
-    def __init__(self, market_state, market_data):
-        self.market_state = market_state
-        self.market_data = market_data
-        self.volatility_analyzer = VolatilityAnalyzer(market_state, market_data)  # Pass required arguments
-        self.online_learning = OnlineLearning(self.market_state, self.market_data)
-        self.strategy_manager = StrategyManager(self.market_state, self.market_data, self.volatility_analyzer, self.online_learning)
-        self.risk_manager = RiskManager(self.volatility_analyzer)
+    def __init__(self):
+        self.exchange_name = "mexc"
+        self.timeframe = "1h"
+        self.limit = 200
+        self.iteration_interval = 60
+        self.mexc_api = MEXCAPI()
+        self.symbol_filter = SymbolFilter()
+        self.volatility_analyzer = VolatilityAnalyzer()
+        self.online_learning = SyncOnlineLearning({}, None)  # Will be updated later
+        self.strategy_manager = StrategyManager()
+        self.risk_manager = RiskManager()
         self.position_manager = PositionManager()
+        self.order_manager = OrderManager()
+        self.risk_calculator = RiskCalculator()
+        self.trade_executor = TradeExecutor()
 
-    async def get_symbols(self, exchange_name: str, timeframe: str, limit: int):
-        """Get filtered symbols for trading."""
-        try:
-            all_symbols = await self.market_data.exchanges[exchange_name].fetch_tickers()
-            symbols = list(all_symbols.keys())
-            logger.info(f"Fetched {len(symbols)} symbols from {exchange_name}")
-            return symbols
-        except Exception as e:
-            logger.error(f"Failed to fetch symbols from {exchange_name}: {str(e)}")
-            return []
+    def get_symbols(self):
+        return self.mexc_api.fetch_symbols()
 
-    async def process_symbol(self, symbol: str, timeframe: str, limit: int, exchange_name: str, klines=None):
-        """Process a single symbol and execute trades."""
-        try:
-            if klines is None:
-                klines = await self.market_data.get_klines(symbol, timeframe, limit, exchange_name)
-            if not klines:
-                return []
+    def batch_symbols(self, symbols, batch_size=50):
+        for i in range(0, len(symbols), batch_size):
+            yield symbols[i:i + batch_size]
 
-            # Calculate risk and position limits
-            trade_size = self.risk_manager.calculate_risk(symbol, timeframe, limit, exchange_name)
-            if not self.risk_manager.check_risk_limits(trade_size, symbol, timeframe, limit, exchange_name):
-                logger.warning(f"Trade size {trade_size} for {symbol} exceeds risk limits")
-                return []
+    def start_trading(self, fetch_klines, train_model):
+        """Start the trading process."""
+        while True:
+            try:
+                logger.info(f"Starting trading iteration on {self.exchange_name}")
+                symbols = self.get_symbols()
+                logger.info(f"Fetched {len(symbols)} symbols from {self.exchange_name}")
 
-            # Check position limits
-            current_position = self.position_manager.get_position(symbol)
-            if current_position + trade_size > self.position_manager.capital * self.position_manager.max_position_size:
-                logger.warning(f"Position size for {symbol} exceeds maximum allowed")
-                return []
+                for symbol_batch in self.batch_symbols(symbols):
+                    for symbol in symbol_batch:
+                        # Fetch klines synchronously
+                        klines = fetch_klines(self.exchange_name, symbol, self.timeframe, self.limit)
+                        if not klines:
+                            logger.warning(f"No klines for {symbol}, skipping")
+                            continue
 
-            # Generate signals and execute trades
-            signals = await self.strategy_manager.generate_signals(symbol, timeframe, limit, exchange_name, klines)
-            trades = []
-            for signal in signals:
-                trade = await self.execute_trade(signal, trade_size)
-                if trade:
-                    trades.append(trade)
-                    self.position_manager.add_position(symbol, trade_size)
-            return trades
-        except Exception as e:
-            logger.error(f"Failed to process symbol {symbol}: {str(e)}")
-            return []
+                        # Train model synchronously
+                        train_success = train_model(symbol, self.timeframe, self.limit, self.exchange_name)
+                        if not train_success:
+                            logger.warning(f"Failed to retrain model for {symbol}, skipping")
+                            continue
 
-    async def execute_trade(self, signal, trade_size):
-        """Execute a trade based on a signal."""
-        try:
-            symbol = signal['symbol']
-            strategy = signal['strategy']
-            signal_type = signal['signal']
-            entry_price = signal.get('entry_price', 0)
+                        # Continue with prediction and trading logic
+                        prediction = self.online_learning.predict(symbol, self.timeframe, self.limit, self.exchange_name)
+                        if prediction is not None:
+                            signals = self.strategy_manager.generate_signals(symbol, klines, prediction)
+                            if signals:
+                                for signal in signals:
+                                    self.execute_trade(signal)
+                        else:
+                            logger.warning(f"No prediction for {symbol}, skipping trade execution")
 
-            # Calculate stop-loss based on volatility
-            volatility = self.volatility_analyzer.get_volatility(symbol, signal['timeframe'], signal['limit'], signal['exchange_name'])
-            stop_loss = self.risk_manager.calculate_stop_loss(entry_price, volatility)
+                logger.info("Trading iteration completed")
+            except Exception as e:
+                logger.error(f"Error in trading iteration: {str(e)}")
+            finally:
+                logger.info(f"Waiting {self.iteration_interval} seconds before the next iteration...")
+                time.sleep(self.iteration_interval)
 
-            # Simulate trade execution
-            trade = {
-                'symbol': symbol,
-                'strategy': strategy,
-                'signal': signal_type,
-                'entry_price': entry_price,
-                'trade_size': trade_size,
-                'stop_loss': stop_loss,
-                'timestamp': time.time()
-            }
-            logger.info(f"Executed trade: {trade}")
-            return trade
-        except Exception as e:
-            logger.error(f"Failed to execute trade: {str(e)}")
-            return None
+    def execute_trade(self, signal):
+        """Execute a trade based on the signal."""
+        risk = self.risk_calculator.calculate_risk(signal)
+        if self.risk_manager.validate_risk(risk):
+            position = self.trade_executor.execute(signal)
+            self.position_manager.add_position(signal['symbol'], position)
+            logger.info(f"Executed trade for {signal['symbol']}: {signal}")
+        else:
+            logger.warning(f"Trade for {signal['symbol']} rejected due to high risk: {risk}")
