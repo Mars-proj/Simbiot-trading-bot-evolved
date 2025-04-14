@@ -21,10 +21,39 @@ class OnlineLearning:
             'transformer': TransformerModel(),
         }
         self.current_model = 'xgboost'
+        self.market_index_symbol = 'BTCUSDT'  # Условный рыночный индекс
 
-    def calculate_technical_indicators(self, klines: list):
-        """Calculate technical indicators (RSI, MACD, Bollinger Bands, ATR, ADX) as features."""
-        if len(klines) < 40:  # Минимальное количество свечей для расчётов
+    async def fetch_market_index_data(self, timeframe: str, limit: int, exchange_name: str):
+        """Fetch market index data (e.g., BTCUSDT)."""
+        klines = await self.market_data.get_klines(self.market_index_symbol, timeframe, limit, exchange_name)
+        if not klines:
+            logger.warning(f"No market index data for {self.market_index_symbol}")
+            return None
+        return klines
+
+    def calculate_correlation(self, prices1: list, prices2: list):
+        """Calculate Pearson correlation between two price series."""
+        if len(prices1) != len(prices2) or len(prices1) < 2:
+            return 0.0
+        prices1 = np.array(prices1)
+        prices2 = np.array(prices2)
+        return np.corrcoef(prices1, prices2)[0, 1]
+
+    def calculate_obv(self, klines: list):
+        """Calculate On-Balance Volume (OBV)."""
+        if len(klines) < 2:
+            return 0.0
+        obv = 0
+        for i in range(1, len(klines)):
+            if klines[i]['close'] > klines[i-1]['close']:
+                obv += klines[i]['volume']
+            elif klines[i]['close'] < klines[i-1]['close']:
+                obv -= klines[i]['volume']
+        return obv
+
+    def calculate_technical_indicators(self, klines: list, market_klines: list = None):
+        """Calculate technical indicators (RSI, MACD, Bollinger Bands, ATR, ADX, OBV, correlations) as features."""
+        if len(klines) < 40:
             return None
 
         closes = np.array([kline['close'] for kline in klines])
@@ -87,12 +116,37 @@ class OnlineLearning:
         atr_14 = np.mean(tr_values[-14:]) if len(tr_values) >= 14 else 0.0
         plus_di = 100 * np.mean(plus_dm[-14:]) / atr_14 if atr_14 != 0 else 0
         minus_di = 100 * np.mean(minus_dm[-14:]) / atr_14 if atr_14 != 0 else 0
-        adx = 100 * abs(plus_di - minus_di) / (plus_di + minus_di) if (plus_di + minus_di) != 0 else 0
+        if plus_di + minus_di == 0:
+            adx = 0
+        else:
+            adx = 100 * abs(plus_di - minus_di) / (plus_di + minus_di)
 
-        # Собираем фичи
+        # OBV
+        obv = self.calculate_obv(klines)
+
+        # Корреляция с рыночным индексом
+        market_correlation = 0.0
+        if market_klines and len(market_klines) == len(klines):
+            market_closes = [kline['close'] for kline in market_klines]
+            market_correlation = self.calculate_correlation(closes, market_closes)
+
+        # Корреляция с другими символами (для примера возьмём несколько случайных символов)
+        sample_symbols = ['ETHUSDT', 'BNBUSDT', 'XRPUSDT']
+        correlations = []
+        for sym in sample_symbols:
+            sym_klines = await self.market_data.get_klines(sym, timeframe, limit, exchange_name)
+            if sym_klines and len(sym_klines) == len(klines):
+                sym_closes = [kline['close'] for kline in sym_klines]
+                corr = self.calculate_correlation(closes, sym_closes)
+                correlations.append(corr)
+            else:
+                correlations.append(0.0)
+        avg_correlation = np.mean(correlations) if correlations else 0.0
+
         features = [
             klines[-1]['open'], klines[-1]['high'], klines[-1]['low'], klines[-1]['close'], klines[-1]['volume'],
-            rsi, macd_line, signal_line, histogram, bb_width, atr, adx
+            rsi, macd_line, signal_line, histogram, bb_width, atr, adx,
+            obv, market_correlation, avg_correlation
         ]
         return features
 
@@ -138,10 +192,11 @@ class OnlineLearning:
                 logger.warning(f"No klines data for {symbol}, skipping retraining")
                 return
 
-            # Формируем фичи с техническими индикаторами
+            market_klines = await self.fetch_market_index_data(timeframe, limit, exchange_name)
+
             features_list = []
             for i in range(len(klines) - 1):
-                features = self.calculate_technical_indicators(klines[:i+1])
+                features = self.calculate_technical_indicators(klines[:i+1], market_klines[:i+1] if market_klines else None)
                 if features:
                     features_list.append(features)
 
@@ -180,7 +235,9 @@ class OnlineLearning:
                 logger.warning(f"No klines data for {symbol}, cannot predict")
                 return []
 
-            features = self.calculate_technical_indicators(klines)
+            market_klines = await self.fetch_market_index_data(timeframe, limit, exchange_name)
+
+            features = self.calculate_technical_indicators(klines, market_klines)
             if not features:
                 logger.warning(f"No features generated for {symbol}, cannot predict")
                 return []
@@ -188,7 +245,12 @@ class OnlineLearning:
             data = np.array([features])
             predictions = model.predict(data)
             logger.info(f"Predictions made with {self.current_model} for {symbol}: {predictions}")
-            return predictions.tolist()
+            if isinstance(predictions, np.ndarray):
+                return predictions.tolist()
+            elif isinstance(predictions, list):
+                return predictions
+            else:
+                return [predictions]
         except Exception as e:
             logger.error(f"Failed to predict for {symbol} with {self.current_model}: {str(e)}")
             return []

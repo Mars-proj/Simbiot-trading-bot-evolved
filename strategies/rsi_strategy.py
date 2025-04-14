@@ -76,17 +76,24 @@ class RSIStrategy(Strategy):
         atr = np.mean(tr_values[:period])
         plus_di = 100 * np.mean(plus_dm[:period]) / atr if atr != 0 else 0
         minus_di = 100 * np.mean(minus_dm[:period]) / atr if atr != 0 else 0
-        dx = 100 * abs(plus_di - minus_di) / (plus_di + minus_di) if (plus_di + minus_di) != 0 else 0
+        # Исправляем расчёт ADX: добавляем проверку на нулевую сумму
+        if plus_di + minus_di == 0:
+            dx = 0
+        else:
+            dx = 100 * abs(plus_di - minus_di) / (plus_di + minus_di)
 
         adx_values = [dx]
         for i in range(period, len(tr_values)):
             atr = (atr * (period - 1) + tr_values[i]) / period
             plus_di = 100 * ((plus_di * (period - 1) + plus_dm[i]) / period) / atr if atr != 0 else 0
             minus_di = 100 * ((minus_di * (period - 1) + minus_dm[i]) / period) / atr if atr != 0 else 0
-            dx = 100 * abs(plus_di - minus_di) / (plus_di + minus_di) if (plus_di + minus_di) != 0 else 0
+            if plus_di + minus_di == 0:
+                dx = 0
+            else:
+                dx = 100 * abs(plus_di - minus_di) / (plus_di + minus_di)
             adx_values.append(dx)
 
-        adx = np.mean(adx_values[-period:])
+        adx = np.mean(adx_values[-period:]) if adx_values else 0.0
         return adx
 
     async def generate_signal(self, symbol: str, timeframe: str, limit: int, exchange_name: str, predictions=None, volatility=None) -> str:
@@ -102,21 +109,17 @@ class RSIStrategy(Strategy):
                 logger.warning(f"Not enough data for {symbol}, returning hold signal")
                 return 'hold'
 
-            # Адаптируем период RSI на основе волатильности
             period = self.base_period
             if volatility is not None:
-                period = int(self.base_period * (1 - volatility))  # Уменьшаем период при высокой волатильности
-                period = max(5, min(20, period))  # Ограничиваем период
+                period = int(self.base_period * (1 - volatility))
+                period = max(5, min(20, period))
                 logger.info(f"Adjusted RSI period for {symbol}: {period}")
 
-            # Рассчитываем RSI
             rsi = self.calculate_rsi(closes, period)
 
-            # Рассчитываем ADX для подтверждения тренда
             adx = self.calculate_adx(klines, period=14)
-            adx_threshold = 25  # Порог для сильного тренда
+            adx_threshold = 25
 
-            # Генерируем сигнал с фильтром ADX
             signal = 'hold'
             if rsi > self.overbought and adx > adx_threshold:
                 signal = 'sell'
