@@ -19,7 +19,7 @@ class TradingBotCore:
     def __init__(self, market_state, market_data):
         self.market_state = market_state
         self.market_data = market_data
-        self.volatility_analyzer = VolatilityAnalyzer()
+        self.volatility_analyzer = VolatilityAnalyzer(market_state, market_data)  # Pass required arguments
         self.online_learning = OnlineLearning(self.market_state, self.market_data)
         self.strategy_manager = StrategyManager(self.market_state, self.market_data, self.volatility_analyzer, self.online_learning)
         self.risk_manager = RiskManager(self.volatility_analyzer)
