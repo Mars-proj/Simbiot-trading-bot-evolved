@@ -7,7 +7,7 @@ This document provides key information about the Simbiot Trading Bot system, inc
 - **Date:** April 14, 2025
 - **Operating System:** Linux Debian 6.1.0-29-amd64
 - **Repository:** https://github.com/Mars-proj/Simbiot-trading-bot-new.git
-- **Total Number of Modules:** 102
+- **Total Number of Modules:** 97
 
 ## Module Structure
 - **Core Modules (4):**
@@ -45,7 +45,6 @@ This document provides key information about the Simbiot Trading Bot system, inc
 - **Models (5):**
   - `models/local_model_api.py`: XGBoost model.
   - `models/transformer_model.py`: Transformer model (Keras/TensorFlow).
-  - `models/base_model.py`: Base class for models.
   - `models/lstm_model.py`: LSTM model.
   - `models/rnn_model.py`: RNN model.
   - `__init__.py`
@@ -87,13 +86,13 @@ This document provides key information about the Simbiot Trading Bot system, inc
   - `utils/time_utils.py`: Time utilities.
   - `__init__.py`
 
-- **Unused Modules (29):**
+- **Unused Modules (24):**
   - Located in `unused_modules/`. These modules are preserved for potential future use. Examples include `arbitrage_strategy.py`, `celery_app.py`, etc. Useful settings from these modules are documented in `CONFIG_SETTINGS.md`.
 
 ## Goals and Compliance
 - **Automated Trading:** Fully supported by core modules and strategies.
 - **Dynamic Strategies:** Strategies adapt thresholds based on volatility.
-- **Machine Learning:** Supported by `online_learning.py` and models.
+- **Machine Learning:** Enhanced with `online_learning.py` and models (XGBoost, Transformer, LSTM, RNN).
 - **Multiple Exchanges:** Supported by multiple API modules in `data_sources/`.
 - **Risk Management:** Enhanced with `risk_management/` modules (stop-loss, position monitoring).
 - **Logging and Monitoring:** Supported by `logging_setup.py`.
