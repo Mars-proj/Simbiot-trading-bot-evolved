@@ -115,15 +115,23 @@ class SyncOnlineLearning:
             klines = self.market_data.get_klines(symbol, timeframe, limit, exchange_name)
             if not klines:
                 logger.warning(f"No klines data for {symbol}, skipping retraining (sync)")
-                return
+                return False
 
             for model_name, model in self.models.items():
                 if model_name not in self.last_retrain or (time.time() - self.last_retrain.get(model_name, 0)) > self.retrain_interval:
+                    logger.info(f"Training {model_name} model for {symbol}")
                     success = model.train(klines)
+                    logger.info(f"Training {model_name} model for {symbol} resulted in: {success}, type: {type(success)}")
+                    if asyncio.iscoroutine(success):
+                        logger.error(f"model.train for {model_name} returned a coroutine for {symbol}")
+                        return False
                     if success:
                         self.last_retrain[model_name] = time.time()
                         logger.info(f"Retrained {model_name} model for {symbol} (sync)")
                     else:
                         logger.warning(f"Failed to retrain {model_name} model for {symbol} (sync)")
+                        return False
+            return True
         except Exception as e:
             logger.error(f"Failed to retrain models for {symbol} (sync): {str(e)}")
+            return False
