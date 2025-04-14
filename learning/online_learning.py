@@ -21,7 +21,7 @@ class OnlineLearning:
             'transformer': TransformerModel(),
         }
         self.current_model = 'xgboost'
-        self.market_index_symbol = 'BTCUSDT'  # Условный рыночный индекс
+        self.market_index_symbol = 'BTCUSDT'
 
     async def fetch_market_index_data(self, timeframe: str, limit: int, exchange_name: str):
         """Fetch market index data (e.g., BTCUSDT)."""
@@ -51,7 +51,7 @@ class OnlineLearning:
                 obv -= klines[i]['volume']
         return obv
 
-    def calculate_technical_indicators(self, klines: list, market_klines: list = None):
+    async def calculate_technical_indicators(self, klines: list, market_klines: list = None, timeframe: str = None, limit: int = None, exchange_name: str = None):
         """Calculate technical indicators (RSI, MACD, Bollinger Bands, ATR, ADX, OBV, correlations) as features."""
         if len(klines) < 40:
             return None
@@ -130,7 +130,7 @@ class OnlineLearning:
             market_closes = [kline['close'] for kline in market_klines]
             market_correlation = self.calculate_correlation(closes, market_closes)
 
-        # Корреляция с другими символами (для примера возьмём несколько случайных символов)
+        # Корреляция с другими символами
         sample_symbols = ['ETHUSDT', 'BNBUSDT', 'XRPUSDT']
         correlations = []
         for sym in sample_symbols:
@@ -196,7 +196,13 @@ class OnlineLearning:
 
             features_list = []
             for i in range(len(klines) - 1):
-                features = self.calculate_technical_indicators(klines[:i+1], market_klines[:i+1] if market_klines else None)
+                features = await self.calculate_technical_indicators(
+                    klines[:i+1], 
+                    market_klines[:i+1] if market_klines else None,
+                    timeframe,
+                    limit,
+                    exchange_name
+                )
                 if features:
                     features_list.append(features)
 
@@ -237,7 +243,7 @@ class OnlineLearning:
 
             market_klines = await self.fetch_market_index_data(timeframe, limit, exchange_name)
 
-            features = self.calculate_technical_indicators(klines, market_klines)
+            features = await self.calculate_technical_indicators(klines, market_klines, timeframe, limit, exchange_name)
             if not features:
                 logger.warning(f"No features generated for {symbol}, cannot predict")
                 return []
