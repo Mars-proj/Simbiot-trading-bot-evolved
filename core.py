@@ -9,6 +9,7 @@ from volatility_analyzer import VolatilityAnalyzer
 from learning.online_learning import SyncOnlineLearning
 from strategies import StrategyManager
 from data_sources.mexc_api import MEXCAPI
+from data_sources.market_data import SyncMarketData
 from risk_management import RiskManager, PositionManager
 from trading import OrderManager, RiskCalculator, TradeExecutor
 
@@ -21,9 +22,11 @@ class TradingBotCore:
         self.limit = 200
         self.iteration_interval = 60
         self.mexc_api = MEXCAPI()
-        self.symbol_filter = SymbolFilter()
+        self.market_data = SyncMarketData()
+        self.market_state = {}  # Пустой словарь для состояния рынка
+        self.symbol_filter = SymbolFilter(self.market_data, self.market_state)
         self.volatility_analyzer = VolatilityAnalyzer()
-        self.online_learning = SyncOnlineLearning({}, None)  # Will be updated later
+        self.online_learning = SyncOnlineLearning(self.market_state, self.market_data)
         self.strategy_manager = StrategyManager()
         self.risk_manager = RiskManager()
         self.position_manager = PositionManager()
