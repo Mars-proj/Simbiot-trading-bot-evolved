@@ -111,6 +111,10 @@ class SyncMarketData:
         exchange = self.exchanges[exchange_name]
         try:
             klines = exchange.fetch_ohlcv(symbol, timeframe, limit=limit)
+            # Check if the result is a coroutine (just in case)
+            if asyncio.iscoroutine(klines):
+                logger.error(f"fetch_ohlcv returned a coroutine for {symbol} on {exchange_name}")
+                return None
             self.cache.set(cache_key, klines, ttl=600)  # Cache for 10 minutes
             return klines
         except Exception as e:
