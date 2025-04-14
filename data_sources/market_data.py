@@ -67,8 +67,10 @@ class MarketData:
 
     async def close(self):
         """Close all exchange connections."""
-        for exchange in self.exchanges.values():
+        for exchange_name, exchange in self.exchanges.items():
             try:
                 await exchange.close()
+                logger.info(f"Closed connection for {exchange_name}")
             except Exception as e:
-                logger.error(f"Failed to close exchange connection: {str(e)}")
+                logger.error(f"Failed to close exchange connection for {exchange_name}: {str(e)}")
+        self.exchanges.clear()
