@@ -9,95 +9,63 @@ from .strategy import Strategy
 logger = setup_logging('macd_strategy')
 
 class MACDStrategy(Strategy):
-    def __init__(self, market_state: dict, market_data):
-        super().__init__(market_state, market_data)
-        self.base_fast_period = 12
-        self.base_slow_period = 26
-        self.base_signal_period = 9
-        self.min_order_size = 0.001  # Минимальный размер ордера (жёсткий порог)
+    def __init__(self, market_state, market_data, volatility_analyzer):
+        super().__init__(market_state, market_data, volatility_analyzer)
+        self.min_order_value = 10.50  # $10 + 5% (hard threshold)
 
-    def calculate_macd(self, closes: np.ndarray, fast_period: int, slow_period: int, signal_period: int) -> tuple:
-        """Calculate MACD, Signal Line, and Histogram."""
-        if len(closes) < slow_period + signal_period:
-            return 0.0, 0.0, 0.0
-
-        def ema(data, period):
-            alpha = 2 / (period + 1)
-            ema_values = [data[0]]
-            for i in range(1, len(data)):
-                ema_values.append(alpha * data[i] + (1 - alpha) * ema_values[-1])
-            return np.array(ema_values)
-
-        ema_fast = ema(closes, fast_period)
-        ema_slow = ema(closes, slow_period)
-        macd = ema_fast - ema_slow
-
-        signal = ema(macd[-signal_period-1:], signal_period)
-        macd_line = macd[-1]
-        signal_line = signal[-1]
-        histogram = macd_line - signal_line
-
-        return macd_line, signal_line, histogram
-
-    def calculate_cci(self, klines: list, period: int = 20) -> float:
-        """Calculate Commodity Channel Index (CCI)."""
-        if len(klines) < period:
-            return 0.0
-
-        typical_prices = [(kline['high'] + kline['low'] + kline['close']) / 3 for kline in klines[-period:]]
-        sma = np.mean(typical_prices)
-        mean_deviation = np.mean([abs(tp - sma) for tp in typical_prices])
-        if mean_deviation == 0:
-            return 0.0
-
-        cci = (typical_prices[-1] - sma) / (0.015 * mean_deviation)
-        return cci
-
-    async def generate_signal(self, symbol: str, timeframe: str, limit: int, exchange_name: str, predictions=None, volatility=None) -> str:
-        """Generate a trading signal using adaptive MACD with dynamic CCI filter."""
+    async def generate_signal(self, symbol: str, timeframe: str, limit: int, exchange_name: str, klines=None):
+        """Generate a MACD signal."""
         try:
-            klines = await self.market_data.get_klines(symbol, timeframe, limit, exchange_name)
-            if not klines:
-                logger.warning(f"No klines data for {symbol}, returning hold signal")
-                return 'hold'
+            if klines is None:
+                klines = await self.market_data.get_klines(symbol, timeframe, limit, exchange_name)
+            if not klines or len(klines) < 26:
+                logger.warning(f"Insufficient klines data for {symbol}")
+                return None
 
-            closes = np.array([kline['close'] for kline in klines])
-            if len(closes) < self.base_slow_period + self.base_signal_period:
-                logger.warning(f"Not enough data for {symbol}, returning hold signal")
-                return 'hold'
+            prices = np.array([kline[4] for kline in klines])  # Closing prices
+            volatility = self.volatility_analyzer.get_volatility(symbol, timeframe, limit, exchange_name)
 
-            fast_period = self.base_fast_period
-            slow_period = self.base_slow_period
-            signal_period = self.base_signal_period
-            if volatility is not None:
-                fast_period = int(self.base_fast_period * (1 - volatility / 2))
-                slow_period = int(self.base_slow_period * (1 - volatility / 2))
-                fast_period = max(5, min(20, fast_period))
-                slow_period = max(15, min(40, slow_period))
-                logger.info(f"Adjusted MACD parameters for {symbol}: fast={fast_period}, slow={slow_period}")
+            # Dynamic MACD periods based on volatility
+            fast_period = int(12 * (1 + volatility / 2))
+            slow_period = int(26 * (1 + volatility / 2))
+            signal_period = int(9 * (1 + volatility / 2))
 
-            macd_line, signal_line, histogram = self.calculate_macd(closes, fast_period, slow_period, signal_period)
+            # Calculate MACD
+            exp1 = np.convolve(prices, np.ones(fast_period)/fast_period, mode='valid')
+            exp2 = np.convolve(prices, np.ones(slow_period)/slow_period, mode='valid')
+            macd = exp1[-len(exp2):] - exp2
+            signal_line = np.convolve(macd, np.ones(signal_period)/signal_period, mode='valid')
+            macd = macd[-len(signal_line):]
+            current_macd = macd[-1]
+            current_signal = signal_line[-1]
 
-            cci = self.calculate_cci(klines, period=20)
-            # Динамический порог CCI на основе волатильности
-            cci_threshold = 50 * (1 + volatility)  # Чем выше волатильность, тем больше порог
-            cci_threshold = max(30, min(100, cci_threshold))
+            # Generate signal
+            if current_macd > current_signal:
+                signal_type = 'buy'
+            elif current_macd < current_signal:
+                signal_type = 'sell'
+            else:
+                logger.info(f"No MACD signal for {symbol}, MACD={current_macd}, Signal={current_signal}")
+                return None
 
-            signal = 'hold'
-            if macd_line > signal_line and histogram > 0 and cci > cci_threshold:
-                signal = 'buy'
-            elif macd_line < signal_line and histogram < 0 and cci < -cci_threshold:
-                signal = 'sell'
+            # Calculate trade size based on volatility
+            trade_size = (volatility * 50) / prices[-1]
+            if trade_size * prices[-1] < self.min_order_value:
+                logger.warning(f"Trade size {trade_size} for {symbol} below minimum order value {self.min_order_value}")
+                return None
 
-            # Проверка минимального размера ордера
-            if signal != 'hold':
-                quantity = 0.1 / closes[-1]  # Пример расчёта количества (10% от баланса)
-                if quantity < self.min_order_size:
-                    logger.warning(f"Order size {quantity} for {symbol} is below minimum {self.min_order_size}, skipping trade")
-                    signal = 'hold'
-
-            logger.info(f"MACD signal for {symbol}: {signal}, MACD={macd_line}, Signal={signal_line}, CCI={cci}, cci_threshold={cci_threshold}")
+            signal = {
+                'symbol': symbol,
+                'strategy': 'macd',
+                'signal': signal_type,
+                'entry_price': prices[-1],
+                'trade_size': trade_size,
+                'timeframe': timeframe,
+                'limit': limit,
+                'exchange_name': exchange_name
+            }
+            logger.info(f"Generated MACD signal: {signal}")
             return signal
         except Exception as e:
             logger.error(f"Failed to generate MACD signal for {symbol}: {str(e)}")
-            return 'hold'
+            return None
