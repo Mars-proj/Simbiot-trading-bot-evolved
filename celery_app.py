@@ -2,6 +2,7 @@ import sys
 import os
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
+import asyncio
 from celery import Celery
 from utils.logging_setup import setup_logging
 
@@ -43,10 +44,16 @@ def train_model_task(symbol, timeframe, limit, exchange_name):
     market_data = SyncMarketData()
     market_state = {}
     try:
+        logger.info(f"Starting train_model_task for {symbol} on {exchange_name}")
         market_data.initialize_exchange(exchange_name)
+        logger.info(f"Initialized exchange for {exchange_name}")
         online_learning = SyncOnlineLearning(market_state, market_data)
+        logger.info(f"Created SyncOnlineLearning instance for {symbol}")
         result = online_learning.retrain(symbol, timeframe, limit, exchange_name)
-        logger.info(f"Model retrained for {symbol} on {exchange_name}, result: {result}")
+        logger.info(f"Model retrained for {symbol} on {exchange_name}, result: {result}, type: {type(result)}")
+        if asyncio.iscoroutine(result):
+            logger.error(f"retrain returned a coroutine for {symbol} on {exchange_name}")
+            return False
         return result
     except Exception as e:
         logger.error(f"Failed to retrain model for {symbol} on {exchange_name}: {str(e)}")
