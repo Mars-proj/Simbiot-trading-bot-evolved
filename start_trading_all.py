@@ -40,7 +40,10 @@ async def train_model(symbol, timeframe, limit, exchange_name):
 
 async def main():
     bot = TradingBotCore()
-    await bot.start_trading(fetch_klines, train_model)
+    try:
+        await bot.start_trading(fetch_klines, train_model)
+    finally:
+        await bot.close()
 
 if __name__ == "__main__":
     asyncio.run(main())
