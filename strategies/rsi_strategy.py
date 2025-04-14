@@ -12,8 +12,7 @@ class RSIStrategy(Strategy):
     def __init__(self, market_state: dict, market_data):
         super().__init__(market_state, market_data)
         self.base_period = 14
-        self.overbought = 65
-        self.oversold = 35
+        self.min_order_size = 0.001  # Минимальный размер ордера (жёсткий порог)
 
     def calculate_rsi(self, closes: np.ndarray, period: int) -> float:
         """Calculate RSI for the given closes."""
@@ -77,7 +76,6 @@ class RSIStrategy(Strategy):
         atr = max(atr, 1e-10)
         plus_di = 100 * np.mean(plus_dm[:period]) / atr
         minus_di = 100 * np.mean(minus_dm[:period]) / atr
-        # Нормализуем plus_di и minus_di, чтобы избежать переполнения
         plus_di = np.clip(plus_di, -1e5, 1e5)
         minus_di = np.clip(minus_di, -1e5, 1e5)
         if plus_di + minus_di == 0:
@@ -95,7 +93,6 @@ class RSIStrategy(Strategy):
             minus_di = (prev_minus_di * (period - 1) + minus_dm[i]) / period
             plus_di = 100 * plus_di / atr
             minus_di = 100 * minus_di / atr
-            # Нормализуем plus_di и minus_di
             plus_di = np.clip(plus_di, -1e5, 1e5)
             minus_di = np.clip(minus_di, -1e5, 1e5)
             if plus_di + minus_di == 0:
@@ -110,7 +107,7 @@ class RSIStrategy(Strategy):
         return adx
 
     async def generate_signal(self, symbol: str, timeframe: str, limit: int, exchange_name: str, predictions=None, volatility=None) -> str:
-        """Generate a trading signal using adaptive RSI with ADX filter."""
+        """Generate a trading signal using adaptive RSI with dynamic thresholds."""
         try:
             klines = await self.market_data.get_klines(symbol, timeframe, limit, exchange_name)
             if not klines:
@@ -129,17 +126,31 @@ class RSIStrategy(Strategy):
                 logger.info(f"Adjusted RSI period for {symbol}: {period}")
 
             rsi = self.calculate_rsi(closes, period)
-
             adx = self.calculate_adx(klines, period=14)
-            adx_threshold = 20
+
+            # Динамические пороги на основе RSI и ADX
+            overbought_threshold = 70 - (volatility * 10)  # Уменьшаем порог при высокой волатильности
+            oversold_threshold = 30 + (volatility * 10)   # Увеличиваем порог при высокой волатильности
+            adx_threshold = 15 + (volatility * 10)        # Динамический порог для ADX
+
+            overbought_threshold = max(50, min(80, overbought_threshold))
+            oversold_threshold = max(20, min(50, oversold_threshold))
+            adx_threshold = max(10, min(30, adx_threshold))
 
             signal = 'hold'
-            if rsi > self.overbought and adx > adx_threshold:
+            if rsi > overbought_threshold and adx > adx_threshold:
                 signal = 'sell'
-            elif rsi < self.oversold and adx > adx_threshold:
+            elif rsi < oversold_threshold and adx > adx_threshold:
                 signal = 'buy'
 
-            logger.info(f"RSI signal for {symbol}: {signal}, RSI={rsi}, ADX={adx}")
+            # Проверка минимального размера ордера
+            if signal != 'hold':
+                quantity = 0.1 / closes[-1]  # Пример расчёта количества (10% от баланса)
+                if quantity < self.min_order_size:
+                    logger.warning(f"Order size {quantity} for {symbol} is below minimum {self.min_order_size}, skipping trade")
+                    signal = 'hold'
+
+            logger.info(f"RSI signal for {symbol}: {signal}, RSI={rsi}, ADX={adx}, overbought={overbought_threshold}, oversold={oversold_threshold}, adx_threshold={adx_threshold}")
             return signal
         except Exception as e:
             logger.error(f"Failed to generate RSI signal for {symbol}: {str(e)}")

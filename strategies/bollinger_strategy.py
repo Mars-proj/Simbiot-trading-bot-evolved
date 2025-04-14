@@ -13,6 +13,7 @@ class BollingerStrategy(Strategy):
         super().__init__(market_state, market_data)
         self.base_period = 20
         self.base_deviation = 2
+        self.min_order_size = 0.001  # Минимальный размер ордера (жёсткий порог)
 
     def calculate_atr(self, klines: list, period: int = 14) -> float:
         """Calculate Average True Range (ATR) for the given klines."""
@@ -34,7 +35,7 @@ class BollingerStrategy(Strategy):
         return atr
 
     async def generate_signal(self, symbol: str, timeframe: str, limit: int, exchange_name: str, predictions=None, volatility=None) -> str:
-        """Generate a trading signal using adaptive Bollinger Bands and ATR filter."""
+        """Generate a trading signal using adaptive Bollinger Bands with dynamic thresholds."""
         try:
             klines = await self.market_data.get_klines(symbol, timeframe, limit, exchange_name)
             if not klines:
@@ -46,11 +47,14 @@ class BollingerStrategy(Strategy):
                 logger.warning(f"Not enough data for {symbol}, returning hold signal")
                 return 'hold'
 
+            # Адаптируем период и отклонение на основе волатильности
             period = self.base_period
             deviation = self.base_deviation
             if volatility is not None:
                 period = int(self.base_period * (1 + volatility))
-                deviation = self.base_deviation * (1 + volatility)
+                deviation = self.base_deviation * (1 + volatility * 0.5)  # Динамическое отклонение
+                period = max(10, min(50, period))  # Ограничиваем период
+                deviation = max(1.5, min(3.0, deviation))  # Ограничиваем отклонение
                 logger.info(f"Adjusted Bollinger parameters for {symbol}: period={period}, deviation={deviation}")
 
             sma = np.mean(closes[-period:])
@@ -60,15 +64,24 @@ class BollingerStrategy(Strategy):
             current_price = closes[-1]
 
             atr = self.calculate_atr(klines[-period:], period=14)
-            atr_threshold = atr * 0.5  # Понижаем порог с 1.5 до 0.5
+
+            # Динамический порог на основе ATR и волатильности
+            dynamic_threshold = atr * (1 + volatility)  # Чем выше волатильность, тем больше порог
 
             signal = 'hold'
-            if current_price > upper_band and (current_price - sma) > atr_threshold:
+            if current_price > upper_band and (current_price - sma) > dynamic_threshold:
                 signal = 'sell'
-            elif current_price < lower_band and (sma - current_price) > atr_threshold:
+            elif current_price < lower_band and (sma - current_price) > dynamic_threshold:
                 signal = 'buy'
 
-            logger.info(f"Bollinger signal for {symbol}: {signal}, upper={upper_band}, lower={lower_band}, ATR={atr}")
+            # Проверка минимального размера ордера
+            if signal != 'hold':
+                quantity = 0.1 / current_price  # Пример расчёта количества (10% от баланса)
+                if quantity < self.min_order_size:
+                    logger.warning(f"Order size {quantity} for {symbol} is below minimum {self.min_order_size}, skipping trade")
+                    signal = 'hold'
+
+            logger.info(f"Bollinger signal for {symbol}: {signal}, upper={upper_band}, lower={lower_band}, ATR={atr}, dynamic_threshold={dynamic_threshold}")
             return signal
         except Exception as e:
             logger.error(f"Failed to generate Bollinger signal for {symbol}: {str(e)}")

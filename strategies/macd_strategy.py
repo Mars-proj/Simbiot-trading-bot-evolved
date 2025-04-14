@@ -14,6 +14,7 @@ class MACDStrategy(Strategy):
         self.base_fast_period = 12
         self.base_slow_period = 26
         self.base_signal_period = 9
+        self.min_order_size = 0.001  # Минимальный размер ордера (жёсткий порог)
 
     def calculate_macd(self, closes: np.ndarray, fast_period: int, slow_period: int, signal_period: int) -> tuple:
         """Calculate MACD, Signal Line, and Histogram."""
@@ -53,7 +54,7 @@ class MACDStrategy(Strategy):
         return cci
 
     async def generate_signal(self, symbol: str, timeframe: str, limit: int, exchange_name: str, predictions=None, volatility=None) -> str:
-        """Generate a trading signal using adaptive MACD with CCI filter."""
+        """Generate a trading signal using adaptive MACD with dynamic CCI filter."""
         try:
             klines = await self.market_data.get_klines(symbol, timeframe, limit, exchange_name)
             if not klines:
@@ -78,7 +79,9 @@ class MACDStrategy(Strategy):
             macd_line, signal_line, histogram = self.calculate_macd(closes, fast_period, slow_period, signal_period)
 
             cci = self.calculate_cci(klines, period=20)
-            cci_threshold = 50  # Понижаем порог с 100 до 50
+            # Динамический порог CCI на основе волатильности
+            cci_threshold = 50 * (1 + volatility)  # Чем выше волатильность, тем больше порог
+            cci_threshold = max(30, min(100, cci_threshold))
 
             signal = 'hold'
             if macd_line > signal_line and histogram > 0 and cci > cci_threshold:
@@ -86,7 +89,14 @@ class MACDStrategy(Strategy):
             elif macd_line < signal_line and histogram < 0 and cci < -cci_threshold:
                 signal = 'sell'
 
-            logger.info(f"MACD signal for {symbol}: {signal}, MACD={macd_line}, Signal={signal_line}, CCI={cci}")
+            # Проверка минимального размера ордера
+            if signal != 'hold':
+                quantity = 0.1 / closes[-1]  # Пример расчёта количества (10% от баланса)
+                if quantity < self.min_order_size:
+                    logger.warning(f"Order size {quantity} for {symbol} is below minimum {self.min_order_size}, skipping trade")
+                    signal = 'hold'
+
+            logger.info(f"MACD signal for {symbol}: {signal}, MACD={macd_line}, Signal={signal_line}, CCI={cci}, cci_threshold={cci_threshold}")
             return signal
         except Exception as e:
             logger.error(f"Failed to generate MACD signal for {symbol}: {str(e)}")
