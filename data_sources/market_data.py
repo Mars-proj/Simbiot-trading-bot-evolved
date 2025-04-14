@@ -113,10 +113,12 @@ class SyncMarketData:
 
         exchange = self.exchanges[exchange_name]
         try:
+            logger.info(f"Calling fetch_ohlcv for {symbol} on {exchange_name}, exchange type: {type(exchange)}")
             klines = exchange.fetch_ohlcv(symbol, timeframe, limit=limit)
             if asyncio.iscoroutine(klines):
                 logger.error(f"fetch_ohlcv returned a coroutine for {symbol} on {exchange_name}")
                 return None
+            logger.info(f"fetch_ohlcv result for {symbol} on {exchange_name}: {type(klines)}")
             self.cache.set(cache_key, klines, ttl=600)  # Cache for 10 minutes
             return klines
         except Exception as e:
