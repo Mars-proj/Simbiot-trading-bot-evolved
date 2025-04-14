@@ -4,82 +4,60 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 import asyncio
 import time
+from celery_app import fetch_klines_task, train_model_task
 from core import TradingBotCore
 from data_sources.market_data import MarketData
 from utils.logging_setup import setup_logging
 
 logger = setup_logging('start_trading_all')
 
-class StartTradingAll:
-    def __init__(self, market_state: dict):
-        self.market_data = MarketData(market_state)
-        self.core = TradingBotCore(market_state, market_data=self.market_data)
-        self.interval = market_state.get('trading_interval', 60)  # Уменьшаем интервал с 300 до 60 секунд
-
-    async def start_all(self, strategies: list, balance: float, timeframe: str, limit: int):
-        """Start trading for all symbols on the first available exchange, prioritizing MEXC."""
-        try:
-            available_exchanges = self.market_data.get_available_exchanges()
-            if not available_exchanges:
-                logger.error("No exchanges available for trading")
-                return []
-
-            exchange_name = 'mexc' if 'mexc' in available_exchanges else available_exchanges[0]
-            logger.info(f"Using exchange: {exchange_name}")
-
-            symbols = await self.market_data.get_symbols(exchange_name)
-            if not symbols:
-                logger.error(f"No symbols found for exchange: {exchange_name}")
-                return []
-
-            filtered_symbols = await self.core.filter_symbols(symbols, exchange_name, timeframe)
-            if not filtered_symbols:
-                logger.error(f"No symbols passed filtering for exchange: {exchange_name}")
-                return []
-
-            trades = []
-            for symbol in filtered_symbols:
-                try:
-                    trade = await self.core.run_trading(symbol, strategies, balance / len(filtered_symbols), timeframe, limit, exchange_name)
-                    trades.extend(trade)
-                except Exception as e:
-                    logger.warning(f"Skipping {symbol} due to error: {str(e)}")
-                    continue
-
-            logger.info(f"Trading iteration completed: {trades}")
-            return trades
-        except Exception as e:
-            logger.error(f"Failed to start trading for all: {str(e)}")
-            raise
-
 async def main():
-    market_state = {
-        'volatility': 0.3,
-        'min_liquidity': 500,
-        'max_volatility': 1.0,
-        'liquidity_period': 240,
-        'trading_interval': 60  # Уменьшаем интервал с 300 до 60 секунд
-    }
-    starter = StartTradingAll(market_state)
-    strategies = ['bollinger', 'rsi', 'macd']
-    balance = 10000
+    exchange_name = 'mexc'
     timeframe = '1h'
     limit = 200
+    interval = 60  # Interval between iterations in seconds
+
+    market_data = MarketData()
+    await market_data.initialize_exchange(exchange_name)
+
+    core = TradingBotCore({}, market_data)
 
     while True:
         try:
-            trades = await starter.start_all(strategies, balance, timeframe, limit)
-            print(f"Trading results: {trades}")
-            logger.info(f"Waiting {starter.interval} seconds before the next iteration...")
-            await asyncio.sleep(starter.interval)
+            logger.info(f"Starting trading iteration on {exchange_name}")
+            symbols = await core.get_symbols(exchange_name, timeframe, limit)
+
+            # Parallel fetching of klines using Celery
+            klines_tasks = []
+            for symbol in symbols:
+                task = fetch_klines_task.delay(exchange_name, symbol, timeframe, limit)
+                klines_tasks.append((symbol, task))
+
+            # Parallel retraining of models using Celery
+            retrain_tasks = []
+            for symbol in symbols:
+                task = train_model_task.delay(symbol, timeframe, limit, exchange_name)
+                retrain_tasks.append(task)
+
+            # Process klines and execute trades
+            trades = {}
+            for symbol, task in klines_tasks:
+                klines = task.get(timeout=300)  # Wait up to 5 minutes for the task
+                if klines:
+                    trades[symbol] = await core.process_symbol(symbol, timeframe, limit, exchange_name, klines)
+                else:
+                    logger.warning(f"No klines data for {symbol}, skipping")
+
+            # Wait for retraining to complete
+            for task in retrain_tasks:
+                task.get(timeout=300)  # Wait up to 5 minutes for the task
+
+            logger.info(f"Trading iteration completed: {trades}")
+            logger.info(f"Waiting {interval} seconds before the next iteration...")
+            time.sleep(interval)
         except Exception as e:
-            logger.error(f"Error in main loop: {str(e)}")
-            logger.info(f"Retrying in {starter.interval} seconds...")
-            await asyncio.sleep(starter.interval)
+            logger.error(f"Error in trading iteration: {str(e)}")
+            time.sleep(interval)
 
 if __name__ == "__main__":
-    loop = asyncio.get_event_loop()
-    try:
-        loop.run_until_complete(main())
-    finally:
-        loop.close()
+    asyncio.run(main())
