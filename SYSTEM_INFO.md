@@ -7,7 +7,7 @@ This document provides key information about the Simbiot Trading Bot system, inc
 - **Date:** April 14, 2025
 - **Operating System:** Linux Debian 6.1.0-29-amd64
 - **Repository:** https://github.com/Mars-proj/Simbiot-trading-bot-new.git
-- **Total Number of Modules:** 103
+- **Total Number of Modules:** 102
 
 ## Module Structure
 - **Core Modules (4):**
@@ -65,7 +65,7 @@ This document provides key information about the Simbiot Trading Bot system, inc
   - `strategies/volatility_strategy.py`: Volatility-based strategy.
   - `__init__.py`
 
-- **Utils (12):**
+- **Utils (11):**
   - `utils/logging_setup.py`: Logging setup.
   - `utils/data_utils.py`: Data processing utilities.
   - `utils/api_rate_limiter.py`: API rate limiting.
@@ -77,7 +77,6 @@ This document provides key information about the Simbiot Trading Bot system, inc
   - `utils/market_data_collector.py`: Collects market data.
   - `utils/performance_tracker.py`: Tracks performance.
   - `utils/time_utils.py`: Time utilities.
-  - `utils/kucoin_api.py`: Duplicate API for KuCoin (to be removed).
   - `__init__.py`
 
 - **Unused Modules (29):**
