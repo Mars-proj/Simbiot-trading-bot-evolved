@@ -3,6 +3,8 @@ import os
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 import asyncio
+import pickle
+import os.path
 from utils.logging_setup import setup_logging
 from strategies.strategy_manager import StrategyManager
 from learning.online_learning import OnlineLearning
@@ -21,14 +23,95 @@ class TradingBotCore:
         self.symbol_filter = SymbolFilter(market_data, market_state)
         self.exchange = MEXCAPI(market_state)
         self.risk_params = {
-            'max_position_size': 0.1,  # Максимум 10% от баланса на одну позицию
-            'stop_loss_factor': 0.02,  # Стоп-лосс на уровне 2% от цены входа
+            'max_position_size': 0.1,
+            'stop_loss_factor': 0.02,
+            'trailing_stop_factor': 0.01,  # Трейлинг-стоп на уровне 1%
         }
+        self.positions = {}  # Храним открытые позиции
+        self.positions_file = "/root/trading_bot/cache/positions.pkl"
+        self.load_positions()
+
+    def load_positions(self):
+        """Load open positions from file."""
+        if os.path.exists(self.positions_file):
+            try:
+                with open(self.positions_file, 'rb') as f:
+                    self.positions = pickle.load(f)
+                logger.info(f"Loaded {len(self.positions)} positions from cache")
+            except Exception as e:
+                logger.warning(f"Failed to load positions: {str(e)}")
+                self.positions = {}
+
+    def save_positions(self):
+        """Save open positions to file."""
+        try:
+            with open(self.positions_file, 'wb') as f:
+                pickle.dump(self.positions, f)
+            logger.info(f"Saved {len(self.positions)} positions to cache")
+        except Exception as e:
+            logger.warning(f"Failed to save positions: {str(e)}")
+
+    async def monitor_positions(self, symbol: str, exchange_name: str, timeframe: str):
+        """Monitor open positions and apply stop-loss or trailing stop."""
+        if symbol not in self.positions:
+            return
+
+        position = self.positions[symbol]
+        entry_price = position['price']
+        quantity = position['quantity']
+        signal = position['signal']
+        stop_loss_price = position['stop_loss_price']
+        trailing_stop_price = position.get('trailing_stop_price', entry_price)
+
+        klines = await self.market_data.get_klines(symbol, timeframe, 1, exchange_name)
+        if not klines:
+            logger.warning(f"No klines data for {symbol}, cannot monitor position")
+            return
+
+        current_price = klines[-1]['close']
+
+        # Обновляем трейлинг-стоп
+        if signal == 'buy':
+            new_trailing_stop = current_price * (1 - self.risk_params['trailing_stop_factor'])
+            trailing_stop_price = max(trailing_stop_price, new_trailing_stop)
+        else:
+            new_trailing_stop = current_price * (1 + self.risk_params['trailing_stop_factor'])
+            trailing_stop_price = min(trailing_stop_price, new_trailing_stop)
+
+        position['trailing_stop_price'] = trailing_stop_price
+
+        # Проверяем стоп-лосс или трейлинг-стоп
+        should_close = False
+        if signal == 'buy':
+            if current_price <= stop_loss_price or current_price <= trailing_stop_price:
+                should_close = True
+        else:
+            if current_price >= stop_loss_price or current_price >= trailing_stop_price:
+                should_close = True
+
+        if should_close:
+            close_signal = 'sell' if signal == 'buy' else 'buy'
+            order_result = await self.exchange.place_order(symbol, close_signal, quantity)
+            if order_result:
+                logger.info(f"Closed position for {symbol} at {current_price}: {order_result}")
+                del self.positions[symbol]
+                self.save_positions()
+            else:
+                logger.error(f"Failed to close position for {symbol}")
 
     async def run_trading(self, symbol: str, strategies: list, balance: float, timeframe: str, limit: int, exchange_name: str) -> list:
         """Run trading for a single symbol and execute orders with risk management."""
         try:
             trades = []
+
+            # Сначала мониторим открытые позиции
+            await self.monitor_positions(symbol, exchange_name, timeframe)
+
+            # Если позиция уже открыта, пропускаем
+            if symbol in self.positions:
+                logger.info(f"Position already open for {symbol}, skipping new trade")
+                return trades
+
             predictions = await self.online_learning.predict(symbol, timeframe, limit, exchange_name)
             if not predictions:
                 logger.warning(f"No predictions for {symbol}, proceeding with default strategy")
@@ -46,7 +129,6 @@ class TradingBotCore:
                             continue
 
                         current_price = klines[-1]['close']
-                        # Ограничиваем размер позиции
                         max_balance = balance * self.risk_params['max_position_size']
                         quantity = min(max_balance / current_price, balance / current_price)
 
@@ -54,18 +136,24 @@ class TradingBotCore:
                             logger.warning(f"Insufficient balance to trade {symbol}")
                             continue
 
-                        # Рассчитываем цену стоп-лосса
                         stop_loss_price = current_price * (1 - self.risk_params['stop_loss_factor']) if signal == 'buy' else current_price * (1 + self.risk_params['stop_loss_factor'])
 
-                        # Используем лимитный ордер для входа
                         order_result = await self.exchange.place_order(symbol, signal, quantity)
                         if not order_result:
                             logger.error(f"Failed to execute {signal} order for {symbol}")
                             continue
 
-                        # Здесь можно добавить логику для установки стоп-лосса через API MEXC (например, условный ордер),
-                        # но MEXC API не поддерживает прямые стоп-лоссы в текущем формате.
-                        # Мы будем отслеживать цену в будущих итерациях для реализации программного стоп-лосса.
+                        # Сохраняем позицию
+                        position = {
+                            'symbol': symbol,
+                            'signal': signal,
+                            'price': current_price,
+                            'quantity': quantity,
+                            'stop_loss_price': stop_loss_price,
+                            'trailing_stop_price': current_price
+                        }
+                        self.positions[symbol] = position
+                        self.save_positions()
 
                         trade = {
                             'symbol': symbol,

@@ -53,12 +53,12 @@ class StartTradingAll:
 if __name__ == "__main__":
     market_state = {
         'volatility': 0.3,
-        'min_liquidity': 500,  # Ещё снижаем порог для теста
-        'max_volatility': 1.0,  # Увеличиваем допустимую волатильность
-        'liquidity_period': 240  # 4 часа
+        'min_liquidity': 500,
+        'max_volatility': 1.0,
+        'liquidity_period': 240
     }
     starter = StartTradingAll(market_state)
     loop = asyncio.get_event_loop()
-    results = loop.run_until_complete(starter.start_all(['bollinger', 'rsi', 'macd'], 10000, '1h', 30))
+    results = loop.run_until_complete(starter.start_all(['bollinger', 'rsi', 'macd'], 10000, '1h', 100))  # Увеличиваем limit до 100
     print(f"Trading results: {results}")
     loop.close()
