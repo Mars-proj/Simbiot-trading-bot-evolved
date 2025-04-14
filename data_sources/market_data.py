@@ -3,97 +3,72 @@ import os
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 import asyncio
+import ccxt.async_support as ccxt
 from utils.logging_setup import setup_logging
-from .binance_api import BinanceAPI
-from .kraken_api import KrakenAPI
-from .mexc_api import MEXCAPI
-from .bitstamp_api import BitstampAPI
-from .bybit_api import BybitAPI
-from .coinbase_api import CoinbaseAPI
-from .huobi_api import HuobiAPI
-from .kucoin_api import KuCoinAPI
+from utils.cache_manager import CacheManager
 
 logger = setup_logging('market_data')
 
 class MarketData:
-    def __init__(self, market_state: dict):
-        self.volatility = market_state['volatility']
+    def __init__(self):
         self.exchanges = {}
-        self.supported_timeframes = {}
-        self._initialize_exchanges()
-        self._supported_timeframes_list = ['1m', '5m', '15m', '30m', '4h', '8h', '1d', '1M']  # Известные поддерживаемые таймфреймы для MEXC
+        self.cache = CacheManager()
 
-    def _initialize_exchanges(self):
-        """Initialize all supported exchanges."""
-        exchange_classes = {
-            'binance': BinanceAPI,
-            'kraken': KrakenAPI,
-            'mexc': MEXCAPI,
-            'bitstamp': BitstampAPI,
-            'bybit': BybitAPI,
-            'coinbase': CoinbaseAPI,
-            'huobi': HuobiAPI,
-            'kucoin': KuCoinAPI
-        }
-        for exchange_name, exchange_class in exchange_classes.items():
-            try:
-                self.exchanges[exchange_name] = exchange_class()
-                logger.info(f"Successfully initialized {exchange_name}")
-            except Exception as e:
-                logger.warning(f"Skipping {exchange_name} due to initialization error: {str(e)}")
-                continue
-
-    def get_available_exchanges(self) -> list:
-        """Return a list of initialized exchanges."""
-        return list(self.exchanges.keys())
-
-    async def get_supported_timeframes(self, exchange_name: str, symbol: str) -> list:
-        """Determine supported timeframes for the exchange by testing with a symbol."""
-        if exchange_name not in self.exchanges:
-            logger.error(f"Exchange {exchange_name} not initialized")
-            return []
-
-        if exchange_name in self.supported_timeframes:
-            return self.supported_timeframes[exchange_name]
-
-        supported = []
-        # Используем только известные поддерживаемые таймфреймы для MEXC
-        for timeframe in self._supported_timeframes_list:
-            try:
-                klines = await self.exchanges[exchange_name].get_klines(symbol, timeframe, 1)
-                if klines and isinstance(klines, list) and len(klines) > 0:
-                    supported.append(timeframe)
-                    logger.info(f"Timeframe {timeframe} is supported on {exchange_name}")
-            except Exception as e:
-                logger.debug(f"Timeframe {timeframe} not supported on {exchange_name}: {str(e)}")
-                continue
-
-        self.supported_timeframes[exchange_name] = supported
-        logger.info(f"Supported timeframes for {exchange_name}: {supported}")
-        return supported
-
-    async def get_symbols(self, exchange_name: str) -> list:
-        """Get all trading symbols from an exchange."""
-        if exchange_name not in self.exchanges:
-            logger.error(f"Exchange {exchange_name} not initialized")
-            return []
+    async def initialize_exchange(self, exchange_name: str, api_key: str = None, api_secret: str = None):
+        """Initialize an exchange."""
         try:
-            symbols = await self.exchanges[exchange_name].get_symbols()
-            if not symbols:
-                logger.warning(f"No symbols available on {exchange_name}. Skipping this exchange.")
-                del self.exchanges[exchange_name]
-            return symbols
+            exchange_class = getattr(ccxt, exchange_name)
+            exchange = exchange_class({
+                'apiKey': api_key,
+                'secret': api_secret,
+                'enableRateLimit': True,
+            })
+            await exchange.load_markets()
+            self.exchanges[exchange_name] = exchange
+            logger.info(f"Successfully initialized {exchange_name}")
         except Exception as e:
-            logger.error(f"Failed to fetch symbols from {exchange_name}: {str(e)}")
-            return []
+            logger.error(f"Failed to initialize {exchange_name}: {str(e)}")
+            raise
 
-    async def get_klines(self, symbol: str, timeframe: str, limit: int, exchange_name: str) -> list:
-        """Get historical klines for a symbol from an exchange."""
+    async def get_klines(self, symbol: str, timeframe: str, limit: int, exchange_name: str):
+        """Fetch klines (candlestick data) for a symbol with caching."""
+        cache_key = f"{exchange_name}:{symbol}:{timeframe}:{limit}"
+        cached_klines = self.cache.get(cache_key)
+        if cached_klines is not None:
+            return cached_klines
+
         if exchange_name not in self.exchanges:
             logger.error(f"Exchange {exchange_name} not initialized")
-            return []
+            return None
+
+        exchange = self.exchanges[exchange_name]
         try:
-            return await self.exchanges[exchange_name].get_klines(symbol, timeframe, limit)
+            klines = await exchange.fetch_ohlcv(symbol, timeframe, limit=limit)
+            self.cache.set(cache_key, klines, ttl=600)  # Cache for 10 minutes
+            return klines
         except Exception as e:
-            logger.error(f"Failed to fetch klines for {symbol} from {exchange_name}: {str(e)}")
-            return []
+            logger.error(f"Failed to fetch klines for {symbol} on {exchange_name}: {str(e)}")
+            return None
+
+    async def get_supported_timeframes(self, exchange_name: str, symbol: str = None):
+        """Get supported timeframes for an exchange."""
+        if exchange_name not in self.exchanges:
+            logger.error(f"Exchange {exchange_name} not initialized")
+            return None
+
+        exchange = self.exchanges[exchange_name]
+        try:
+            if hasattr(exchange, 'timeframes'):
+                return list(exchange.timeframes.keys())
+            return ['1m', '5m', '15m', '1h', '4h', '1d']
+        except Exception as e:
+            logger.error(f"Failed to fetch supported timeframes for {exchange_name}: {str(e)}")
+            return None
+
+    async def close(self):
+        """Close all exchange connections."""
+        for exchange in self.exchanges.values():
+            try:
+                await exchange.close()
+            except Exception as e:
+                logger.error(f"Failed to close exchange connection: {str(e)}")
