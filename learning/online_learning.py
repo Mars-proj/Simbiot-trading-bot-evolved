@@ -29,7 +29,7 @@ class OnlineLearning:
         self.last_retrain = {}
 
     async def retrain(self, symbol: str, timeframe: str, limit: int, exchange_name: str):
-        """Retrain all models for a symbol."""
+        """Retrain all models for a symbol asynchronously."""
         try:
             klines = await self.market_data.get_klines(symbol, timeframe, limit, exchange_name)
             if not klines:
@@ -48,7 +48,7 @@ class OnlineLearning:
             logger.error(f"Failed to retrain models for {symbol}: {str(e)}")
 
     async def predict(self, symbol: str, timeframe: str, limit: int, exchange_name: str):
-        """Predict the next price using the best model."""
+        """Predict the next price using the best model asynchronously."""
         try:
             klines = await self.market_data.get_klines(symbol, timeframe, limit, exchange_name)
             if not klines:
@@ -82,7 +82,7 @@ class OnlineLearning:
             return None
 
     async def select_model(self, volatility: float):
-        """Select the best model based on market volatility."""
+        """Select the best model based on market volatility asynchronously."""
         try:
             if volatility > 0.5:  # High volatility: use Transformer or LSTM
                 return 'transformer' if self.performance_metrics.get('transformer', 0) > self.performance_metrics.get('lstm', 0) else 'lstm'
@@ -112,7 +112,7 @@ class SyncOnlineLearning:
     def retrain(self, symbol: str, timeframe: str, limit: int, exchange_name: str):
         """Retrain all models for a symbol synchronously."""
         try:
-            klines = self.market_data.get_klines(symbol, timeframe, limit, exchange_name)
+            klines = asyncio.run(self.market_data.get_klines(symbol, timeframe, limit, exchange_name))
             if not klines:
                 logger.warning(f"No klines data for {symbol}, skipping retraining (sync)")
                 return False

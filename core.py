@@ -3,13 +3,14 @@ import os
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 import time
+import asyncio
 from utils.logging_setup import setup_logging
 from symbol_filter import SymbolFilter
 from volatility_analyzer import VolatilityAnalyzer
-from learning.online_learning import SyncOnlineLearning
+from learning.online_learning import OnlineLearning
 from strategies import StrategyManager
 from data_sources.mexc_api import MEXCAPI
-from data_sources.market_data import SyncMarketData
+from data_sources.market_data import AsyncMarketData
 from risk_management import RiskManager, PositionManager
 from trading import OrderManager, RiskCalculator, TradeExecutor
 
@@ -22,11 +23,11 @@ class TradingBotCore:
         self.limit = 200
         self.iteration_interval = 60
         self.mexc_api = MEXCAPI()
-        self.market_data = SyncMarketData()
+        self.market_data = AsyncMarketData()
         self.market_state = {}  # Пустой словарь для состояния рынка
         self.symbol_filter = SymbolFilter(self.market_data, self.market_state)
         self.volatility_analyzer = VolatilityAnalyzer(self.market_state, self.market_data)
-        self.online_learning = SyncOnlineLearning(self.market_state, self.market_data)
+        self.online_learning = OnlineLearning(self.market_state, self.market_data)
         self.strategy_manager = StrategyManager(self.market_state, self.market_data, self.volatility_analyzer, self.online_learning)
         self.risk_manager = RiskManager(self.volatility_analyzer)
         self.position_manager = PositionManager()
@@ -41,7 +42,7 @@ class TradingBotCore:
         for i in range(0, len(symbols), batch_size):
             yield symbols[i:i + batch_size]
 
-    def start_trading(self, fetch_klines, train_model):
+    async def start_trading(self, fetch_klines, train_model):
         """Start the trading process."""
         while True:
             try:
@@ -50,21 +51,25 @@ class TradingBotCore:
                 logger.info(f"Fetched {len(symbols)} symbols from {self.exchange_name}")
 
                 for symbol_batch in self.batch_symbols(symbols):
+                    tasks = []
                     for symbol in symbol_batch:
-                        # Fetch klines synchronously
-                        klines = fetch_klines(self.exchange_name, symbol, self.timeframe, self.limit)
+                        # Fetch klines asynchronously
+                        tasks.append(fetch_klines(self.exchange_name, symbol, self.timeframe, self.limit))
+                    klines_results = await asyncio.gather(*tasks)
+
+                    for symbol, klines in zip(symbol_batch, klines_results):
                         if not klines:
                             logger.warning(f"No klines for {symbol}, skipping")
                             continue
 
-                        # Train model synchronously
-                        train_success = train_model(symbol, self.timeframe, self.limit, self.exchange_name)
+                        # Train model asynchronously
+                        train_success = await train_model(symbol, self.timeframe, self.limit, self.exchange_name)
                         if not train_success:
                             logger.warning(f"Failed to retrain model for {symbol}, skipping")
                             continue
 
                         # Continue with prediction and trading logic
-                        prediction = self.online_learning.predict(symbol, self.timeframe, self.limit, self.exchange_name)
+                        prediction = await self.online_learning.predict(symbol, self.timeframe, self.limit, self.exchange_name)
                         if prediction is not None:
                             signals = self.strategy_manager.generate_signals(symbol, klines, prediction)
                             if signals:
@@ -78,11 +83,11 @@ class TradingBotCore:
                 logger.error(f"Error in trading iteration: {str(e)}")
             finally:
                 logger.info(f"Waiting {self.iteration_interval} seconds before the next iteration...")
-                time.sleep(self.iteration_interval)
+                await asyncio.sleep(self.iteration_interval)
 
     def execute_trade(self, signal):
-        """Execute a trade based on the signal."""
-        risk = self.risk_calculator.calculate_risk(signal, klines)
+        """Execute a trade synchronously."""
+        risk = self.risk_calculator.calculate_risk(signal)
         if self.risk_manager.validate_risk(risk):
             position = self.trade_executor.execute(signal)
             self.position_manager.add_position(signal['symbol'], position)
