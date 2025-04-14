@@ -9,80 +9,60 @@ from .strategy import Strategy
 logger = setup_logging('bollinger_strategy')
 
 class BollingerStrategy(Strategy):
-    def __init__(self, market_state: dict, market_data):
-        super().__init__(market_state, market_data)
-        self.base_period = 20
-        self.base_deviation = 2
-        self.min_order_size = 0.001  # Минимальный размер ордера (жёсткий порог)
+    def __init__(self, market_state, market_data, volatility_analyzer):
+        super().__init__(market_state, market_data, volatility_analyzer)
+        self.min_order_value = 10.50  # $10 + 5% (hard threshold)
 
-    def calculate_atr(self, klines: list, period: int = 14) -> float:
-        """Calculate Average True Range (ATR) for the given klines."""
-        if len(klines) < period:
-            return 0.0
-
-        tr_values = []
-        for i in range(1, len(klines)):
-            high = klines[i]['high']
-            low = klines[i]['low']
-            prev_close = klines[i-1]['close']
-            tr = max(high - low, abs(high - prev_close), abs(low - prev_close))
-            tr_values.append(tr)
-
-        if not tr_values:
-            return 0.0
-
-        atr = np.mean(tr_values[-period:])
-        return atr
-
-    async def generate_signal(self, symbol: str, timeframe: str, limit: int, exchange_name: str, predictions=None, volatility=None) -> str:
-        """Generate a trading signal using adaptive Bollinger Bands with dynamic thresholds."""
+    async def generate_signal(self, symbol: str, timeframe: str, limit: int, exchange_name: str, klines=None):
+        """Generate a Bollinger Bands signal."""
         try:
-            klines = await self.market_data.get_klines(symbol, timeframe, limit, exchange_name)
-            if not klines:
-                logger.warning(f"No klines data for {symbol}, returning hold signal")
-                return 'hold'
+            if klines is None:
+                klines = await self.market_data.get_klines(symbol, timeframe, limit, exchange_name)
+            if not klines or len(klines) < 20:
+                logger.warning(f"Insufficient klines data for {symbol}")
+                return None
 
-            closes = np.array([kline['close'] for kline in klines])
-            if len(closes) < self.base_period:
-                logger.warning(f"Not enough data for {symbol}, returning hold signal")
-                return 'hold'
+            prices = np.array([kline[4] for kline in klines])  # Closing prices
+            volatility = self.volatility_analyzer.get_volatility(symbol, timeframe, limit, exchange_name)
 
-            # Адаптируем период и отклонение на основе волатильности
-            period = self.base_period
-            deviation = self.base_deviation
-            if volatility is not None:
-                period = int(self.base_period * (1 + volatility))
-                deviation = self.base_deviation * (1 + volatility * 0.5)  # Динамическое отклонение
-                period = max(10, min(50, period))  # Ограничиваем период
-                deviation = max(1.5, min(3.0, deviation))  # Ограничиваем отклонение
-                logger.info(f"Adjusted Bollinger parameters for {symbol}: period={period}, deviation={deviation}")
+            # Dynamic period and deviation based on volatility
+            period = int(20 * (1 + volatility))
+            deviation = 2 + volatility  # Adjust deviation dynamically
 
-            sma = np.mean(closes[-period:])
-            std = np.std(closes[-period:])
+            # Calculate Bollinger Bands
+            sma = np.mean(prices[-period:])
+            std = np.std(prices[-period:])
             upper_band = sma + deviation * std
             lower_band = sma - deviation * std
-            current_price = closes[-1]
+            current_price = prices[-1]
 
-            atr = self.calculate_atr(klines[-period:], period=14)
+            # Generate signal
+            if current_price > upper_band:
+                signal_type = 'sell'
+            elif current_price < lower_band:
+                signal_type = 'buy'
+            else:
+                logger.info(f"No Bollinger Bands signal for {symbol}, price within bounds")
+                return None
 
-            # Динамический порог на основе ATR и волатильности
-            dynamic_threshold = atr * (1 + volatility)  # Чем выше волатильность, тем больше порог
+            # Calculate trade size based on volatility
+            trade_size = (volatility * 50) / current_price
+            if trade_size * current_price < self.min_order_value:
+                logger.warning(f"Trade size {trade_size} for {symbol} below minimum order value {self.min_order_value}")
+                return None
 
-            signal = 'hold'
-            if current_price > upper_band and (current_price - sma) > dynamic_threshold:
-                signal = 'sell'
-            elif current_price < lower_band and (sma - current_price) > dynamic_threshold:
-                signal = 'buy'
-
-            # Проверка минимального размера ордера
-            if signal != 'hold':
-                quantity = 0.1 / current_price  # Пример расчёта количества (10% от баланса)
-                if quantity < self.min_order_size:
-                    logger.warning(f"Order size {quantity} for {symbol} is below minimum {self.min_order_size}, skipping trade")
-                    signal = 'hold'
-
-            logger.info(f"Bollinger signal for {symbol}: {signal}, upper={upper_band}, lower={lower_band}, ATR={atr}, dynamic_threshold={dynamic_threshold}")
+            signal = {
+                'symbol': symbol,
+                'strategy': 'bollinger',
+                'signal': signal_type,
+                'entry_price': current_price,
+                'trade_size': trade_size,
+                'timeframe': timeframe,
+                'limit': limit,
+                'exchange_name': exchange_name
+            }
+            logger.info(f"Generated Bollinger Bands signal: {signal}")
             return signal
         except Exception as e:
-            logger.error(f"Failed to generate Bollinger signal for {symbol}: {str(e)}")
-            return 'hold'
+            logger.error(f"Failed to generate Bollinger Bands signal for {symbol}: {str(e)}")
+            return None
