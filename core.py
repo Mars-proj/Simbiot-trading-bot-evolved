@@ -25,7 +25,7 @@ class TradingBotCore:
         self.market_data = SyncMarketData()
         self.market_state = {}  # Пустой словарь для состояния рынка
         self.symbol_filter = SymbolFilter(self.market_data, self.market_state)
-        self.volatility_analyzer = VolatilityAnalyzer()
+        self.volatility_analyzer = VolatilityAnalyzer(self.market_state, self.market_data)
         self.online_learning = SyncOnlineLearning(self.market_state, self.market_data)
         self.strategy_manager = StrategyManager()
         self.risk_manager = RiskManager()
