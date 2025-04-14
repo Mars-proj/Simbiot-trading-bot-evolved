@@ -74,10 +74,12 @@ class RSIStrategy(Strategy):
             return 0.0
 
         atr = np.mean(tr_values[:period])
-        # Добавляем минимальное значение для atr, чтобы избежать переполнения
         atr = max(atr, 1e-10)
         plus_di = 100 * np.mean(plus_dm[:period]) / atr
         minus_di = 100 * np.mean(minus_dm[:period]) / atr
+        # Нормализуем plus_di и minus_di, чтобы избежать переполнения
+        plus_di = np.clip(plus_di, -1e5, 1e5)
+        minus_di = np.clip(minus_di, -1e5, 1e5)
         if plus_di + minus_di == 0:
             dx = 0
         else:
@@ -86,9 +88,16 @@ class RSIStrategy(Strategy):
         adx_values = [dx]
         for i in range(period, len(tr_values)):
             atr = (atr * (period - 1) + tr_values[i]) / period
-            atr = max(atr, 1e-10)  # Минимальное значение для atr
-            plus_di = 100 * ((plus_di * (period - 1) + plus_dm[i]) / period) / atr
-            minus_di = 100 * ((minus_di * (period - 1) + minus_dm[i]) / period) / atr
+            atr = max(atr, 1e-10)
+            prev_plus_di = plus_di
+            prev_minus_di = minus_di
+            plus_di = (prev_plus_di * (period - 1) + plus_dm[i]) / period
+            minus_di = (prev_minus_di * (period - 1) + minus_dm[i]) / period
+            plus_di = 100 * plus_di / atr
+            minus_di = 100 * minus_di / atr
+            # Нормализуем plus_di и minus_di
+            plus_di = np.clip(plus_di, -1e5, 1e5)
+            minus_di = np.clip(minus_di, -1e5, 1e5)
             if plus_di + minus_di == 0:
                 dx = 0
             else:
@@ -96,7 +105,6 @@ class RSIStrategy(Strategy):
             adx_values.append(dx)
 
         adx = np.mean(adx_values[-period:]) if adx_values else 0.0
-        # Убедимся, что adx не nan
         if np.isnan(adx):
             adx = 0.0
         return adx

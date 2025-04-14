@@ -7,7 +7,6 @@ import numpy as np
 from sklearn.preprocessing import StandardScaler
 from utils.logging_setup import setup_logging
 from models.local_model_api import LocalModelAPI
-from models.transformer_model import TransformerModel
 from volatility_analyzer import VolatilityAnalyzer
 
 logger = setup_logging('online_learning')
@@ -19,7 +18,8 @@ class OnlineLearning:
         self.volatility_analyzer = VolatilityAnalyzer(market_state, market_data)
         self.models = {
             'xgboost': LocalModelAPI(market_state),
-            'transformer': TransformerModel(),
+            # Временно отключаем transformer модель
+            # 'transformer': TransformerModel(),
         }
         self.current_model = 'xgboost'
         self.market_index_symbol = 'BTCUSDT'
@@ -164,12 +164,9 @@ class OnlineLearning:
                 timeframe = supported_timeframes[0]
 
             volatility = await self.volatility_analyzer.analyze_volatility(symbol, timeframe, limit, exchange_name)
-            if volatility > 0.5:
-                self.current_model = 'transformer'
-                logger.info(f"Selected transformer model for {symbol} due to high volatility: {volatility}")
-            else:
-                self.current_model = 'xgboost'
-                logger.info(f"Selected xgboost model for {symbol} due to low volatility: {volatility}")
+            # Временно используем только xgboost
+            self.current_model = 'xgboost'
+            logger.info(f"Selected xgboost model for {symbol} (transformer disabled due to CuDNN issue)")
             return self.current_model
         except Exception as e:
             logger.error(f"Failed to select model for {symbol}, using default: {self.current_model}. Error: {str(e)}")
@@ -215,7 +212,6 @@ class OnlineLearning:
                 return
 
             data = np.array(features_list)
-            # Нормализуем фичи
             data = self.scaler.fit_transform(data)
             all_labels = np.array([1 if klines[i+1]['close'] > klines[i]['close'] else 0 for i in range(len(klines)-1)])
             labels = all_labels[valid_indices]
@@ -256,7 +252,6 @@ class OnlineLearning:
                 return []
 
             data = np.array([features])
-            # Нормализуем фичи
             data = self.scaler.transform(data)
             predictions = model.predict(data)
             logger.info(f"Predictions made with {self.current_model} for {symbol}: {predictions}")
