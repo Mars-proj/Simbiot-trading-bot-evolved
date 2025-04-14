@@ -27,7 +27,7 @@ class TradingBotCore:
         self.symbol_filter = SymbolFilter(self.market_data, self.market_state)
         self.volatility_analyzer = VolatilityAnalyzer(self.market_state, self.market_data)
         self.online_learning = SyncOnlineLearning(self.market_state, self.market_data)
-        self.strategy_manager = StrategyManager()
+        self.strategy_manager = StrategyManager(self.market_state, self.market_data, self.volatility_analyzer, self.online_learning)
         self.risk_manager = RiskManager()
         self.position_manager = PositionManager()
         self.order_manager = OrderManager()
