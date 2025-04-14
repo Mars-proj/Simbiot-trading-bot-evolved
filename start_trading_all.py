@@ -3,6 +3,7 @@ import os
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 import asyncio
+import time
 from core import TradingBotCore
 from data_sources.market_data import MarketData
 from utils.logging_setup import setup_logging
@@ -13,6 +14,7 @@ class StartTradingAll:
     def __init__(self, market_state: dict):
         self.market_data = MarketData(market_state)
         self.core = TradingBotCore(market_state, market_data=self.market_data)
+        self.interval = market_state.get('trading_interval', 300)  # Интервал между итерациями в секундах (по умолчанию 5 минут)
 
     async def start_all(self, strategies: list, balance: float, timeframe: str, limit: int):
         """Start trading for all symbols on the first available exchange, prioritizing MEXC."""
@@ -50,15 +52,34 @@ class StartTradingAll:
             logger.error(f"Failed to start trading for all: {str(e)}")
             raise
 
-if __name__ == "__main__":
+async def main():
     market_state = {
         'volatility': 0.3,
         'min_liquidity': 500,
         'max_volatility': 1.0,
-        'liquidity_period': 240
+        'liquidity_period': 240,
+        'trading_interval': 300  # Интервал в секундах (5 минут)
     }
     starter = StartTradingAll(market_state)
+    strategies = ['bollinger', 'rsi', 'macd']
+    balance = 10000
+    timeframe = '1h'
+    limit = 100
+
+    while True:
+        try:
+            trades = await starter.start_all(strategies, balance, timeframe, limit)
+            print(f"Trading results: {trades}")
+            logger.info(f"Waiting {starter.interval} seconds before the next iteration...")
+            await asyncio.sleep(starter.interval)
+        except Exception as e:
+            logger.error(f"Error in main loop: {str(e)}")
+            logger.info(f"Retrying in {starter.interval} seconds...")
+            await asyncio.sleep(starter.interval)
+
+if __name__ == "__main__":
     loop = asyncio.get_event_loop()
-    results = loop.run_until_complete(starter.start_all(['bollinger', 'rsi', 'macd'], 10000, '1h', 100))  # Увеличиваем limit до 100
-    print(f"Trading results: {results}")
-    loop.close()
+    try:
+        loop.run_until_complete(main())
+    finally:
+        loop.close()
