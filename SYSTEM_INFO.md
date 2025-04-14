@@ -49,19 +49,22 @@ This document provides key information about the Simbiot Trading Bot system, inc
   - `models/rnn_model.py`: RNN model.
   - `__init__.py`
 
-- **Strategies (12):**
+- **Strategies (15):**
   - `strategies/strategy.py`: Base class for strategies.
   - `strategies/bollinger_strategy.py`: Bollinger Bands strategy.
   - `strategies/rsi_strategy.py`: RSI strategy.
   - `strategies/macd_strategy.py`: MACD strategy.
   - `strategies/ml_strategy.py`: ML-based strategy.
-  - `strategies/arbitrage_strategy.py`: Arbitrage strategy.
-  - `strategies/mean_reversion_strategy.py`: Mean reversion strategy.
-  - `strategies/grid_strategy.py`: Grid trading strategy.
+  - `strategies/arbitrage_strategy.py`: Arbitrage strategy (dynamic).
+  - `strategies/mean_reversion_strategy.py`: Mean reversion strategy (dynamic).
+  - `strategies/grid_strategy.py`: Grid trading strategy (dynamic).
   - `strategies/breakout_strategy.py`: Breakout strategy.
   - `strategies/scalping_strategy.py`: Scalping strategy.
   - `strategies/trend_strategy.py`: Trend-following strategy.
   - `strategies/volatility_strategy.py`: Volatility-based strategy.
+  - `strategies/signal_generator.py`: Signal generation utilities.
+  - `strategies/strategy_manager.py`: Manages strategy execution.
+  - `strategies/strategy_optimizer.py`: Optimizes strategy parameters.
   - `__init__.py`
 
 - **Risk Management (5):**
@@ -87,11 +90,11 @@ This document provides key information about the Simbiot Trading Bot system, inc
   - `__init__.py`
 
 - **Unused Modules (24):**
-  - Located in `unused_modules/`. These modules are preserved for potential future use. Examples include `arbitrage_strategy.py`, `celery_app.py`, etc. Useful settings from these modules are documented in `CONFIG_SETTINGS.md`.
+  - Located in `unused_modules/`. These modules are preserved for potential future use. Examples include `alert_manager.py`, `health_checker.py`, etc. Useful settings from these modules are documented in `CONFIG_SETTINGS.md`.
 
 ## Goals and Compliance
 - **Automated Trading:** Fully supported by core modules and strategies.
-- **Dynamic Strategies:** Strategies adapt thresholds based on volatility.
+- **Dynamic Strategies:** Enhanced with new strategies (arbitrage, mean_reversion, grid) using dynamic thresholds.
 - **Machine Learning:** Enhanced with `online_learning.py` and models (XGBoost, Transformer, LSTM, RNN).
 - **Multiple Exchanges:** Supported by multiple API modules in `data_sources/`.
 - **Risk Management:** Enhanced with `risk_management/` modules (stop-loss, position monitoring).
