@@ -7,26 +7,26 @@ class ScalpingStrategy:
         self.market_state = market_state
         self.market_data = market_data
         self.volatility_analyzer = volatility_analyzer
-        self.scalp_range = 0.005  # 0.5% по умолчанию
+        self.scalp_range = 0.005
 
-    def adapt_parameters(self, symbol, timeframe, limit, exchange_name):
+    async def adapt_parameters(self, symbol, timeframe, limit, exchange_name):
         """Adapt scalp range based on volatility."""
         try:
-            klines = self.market_data.get_klines(symbol, timeframe, limit, exchange_name)
+            klines = await self.market_data.get_klines(symbol, timeframe, limit, exchange_name)
             if not klines:
                 logger.warning(f"No klines for {symbol}, using default scalp range")
                 return
             volatility_factor = self.volatility_analyzer.analyze(klines)
-            self.scalp_range = 0.005 * (1 + volatility_factor)  # Увеличиваем диапазон при высокой волатильности
+            self.scalp_range = 0.005 * (1 + volatility_factor)
             logger.info(f"Adapted scalp range for {symbol}: {self.scalp_range}")
         except Exception as e:
             logger.error(f"Failed to adapt parameters for {symbol}: {str(e)}")
 
-    def generate_signal(self, symbol, klines, timeframe, limit, exchange_name):
+    async def generate_signal(self, symbol, klines, timeframe, limit, exchange_name):
         """Generate a scalping signal (simplified)."""
         try:
-            self.adapt_parameters(symbol, timeframe, limit, exchange_name)
-            closes = [kline[4] for kline in klines][-2:]  # Последние две цены
+            await self.adapt_parameters(symbol, timeframe, limit, exchange_name)
+            closes = [kline[4] for kline in klines][-2:]
             if len(closes) < 2:
                 logger.warning(f"Not enough data for {symbol}")
                 return None

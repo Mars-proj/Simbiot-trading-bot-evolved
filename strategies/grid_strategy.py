@@ -8,26 +8,26 @@ class GridStrategy:
         self.market_data = market_data
         self.volatility_analyzer = volatility_analyzer
         self.grid_levels = 5
-        self.grid_spacing = 0.01  # 1% по умолчанию
+        self.grid_spacing = 0.01
 
-    def adapt_parameters(self, symbol, timeframe, limit, exchange_name):
+    async def adapt_parameters(self, symbol, timeframe, limit, exchange_name):
         """Adapt grid spacing based on volatility."""
         try:
-            klines = self.market_data.get_klines(symbol, timeframe, limit, exchange_name)
+            klines = await self.market_data.get_klines(symbol, timeframe, limit, exchange_name)
             if not klines:
                 logger.warning(f"No klines for {symbol}, using default grid spacing")
                 return
             volatility_factor = self.volatility_analyzer.analyze(klines)
-            self.grid_spacing = 0.01 * (1 + volatility_factor)  # Увеличиваем шаг сетки при высокой волатильности
+            self.grid_spacing = 0.01 * (1 + volatility_factor)
             logger.info(f"Adapted grid spacing for {symbol}: {self.grid_spacing}")
         except Exception as e:
             logger.error(f"Failed to adapt parameters for {symbol}: {str(e)}")
 
-    def generate_signal(self, symbol, klines, timeframe, limit, exchange_name):
+    async def generate_signal(self, symbol, klines, timeframe, limit, exchange_name):
         """Generate a grid trading signal (simplified)."""
         try:
-            self.adapt_parameters(symbol, timeframe, limit, exchange_name)
-            current_price = klines[-1][4]  # Последняя цена закрытия
+            await self.adapt_parameters(symbol, timeframe, limit, exchange_name)
+            current_price = klines[-1][4]
             base_price = klines[-self.grid_levels][4] if len(klines) >= self.grid_levels else current_price
             price_diff = (current_price - base_price) / base_price if base_price != 0 else 0
 

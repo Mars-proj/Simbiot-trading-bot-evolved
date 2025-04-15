@@ -10,26 +10,25 @@ class BollingerStrategy:
         self.volatility_analyzer = volatility_analyzer
         self.period = period
         self.base_deviation = deviation
-        self.deviation = deviation  # Будет адаптироваться
+        self.deviation = deviation
 
-    def adapt_parameters(self, symbol, timeframe, limit, exchange_name):
+    async def adapt_parameters(self, symbol, timeframe, limit, exchange_name):
         """Adapt Bollinger Bands deviation based on market volatility."""
         try:
-            klines = self.market_data.get_klines(symbol, timeframe, limit, exchange_name)
+            klines = await self.market_data.get_klines(symbol, timeframe, limit, exchange_name)
             if not klines:
                 logger.warning(f"No klines for {symbol}, using default deviation")
                 return
-            # Пример адаптации: увеличиваем deviation при высокой волатильности
             self.deviation = self.base_deviation * (1 + self.volatility_analyzer.analyze(klines))
             logger.info(f"Adapted deviation for {symbol}: {self.deviation}")
         except Exception as e:
             logger.error(f"Failed to adapt parameters for {symbol}: {str(e)}")
 
-    def generate_signal(self, symbol, klines, timeframe, limit, exchange_name):
+    async def generate_signal(self, symbol, klines, timeframe, limit, exchange_name):
         """Generate a signal using Bollinger Bands."""
         try:
-            self.adapt_parameters(symbol, timeframe, limit, exchange_name)
-            closes = [kline[4] for kline in klines][-self.period:]  # Последние period закрытий
+            await self.adapt_parameters(symbol, timeframe, limit, exchange_name)
+            closes = [kline[4] for kline in klines][-self.period:]
             if len(closes) < self.period:
                 logger.warning(f"Not enough data for {symbol}")
                 return None

@@ -7,32 +7,31 @@ class VolatilityStrategy:
         self.market_state = market_state
         self.market_data = market_data
         self.volatility_analyzer = volatility_analyzer
-        self.volatility_threshold = 0.05  # 5% по умолчанию
+        self.volatility_threshold = 0.05
 
-    def adapt_parameters(self, symbol, timeframe, limit, exchange_name):
+    async def adapt_parameters(self, symbol, timeframe, limit, exchange_name):
         """Adapt volatility threshold dynamically."""
         try:
-            klines = self.market_data.get_klines(symbol, timeframe, limit, exchange_name)
+            klines = await self.market_data.get_klines(symbol, timeframe, limit, exchange_name)
             if not klines:
                 logger.warning(f"No klines for {symbol}, using default volatility threshold")
                 return
             volatility = self.volatility_analyzer.analyze(klines)
-            self.volatility_threshold = volatility * 1.2  # Увеличиваем порог на основе текущей волатильности
+            self.volatility_threshold = volatility * 1.2
             logger.info(f"Adapted volatility threshold for {symbol}: {self.volatility_threshold}")
         except Exception as e:
             logger.error(f"Failed to adapt parameters for {symbol}: {str(e)}")
 
-    def generate_signal(self, symbol, klines, timeframe, limit, exchange_name):
+    async def generate_signal(self, symbol, klines, timeframe, limit, exchange_name):
         """Generate a volatility-based signal."""
         try:
-            self.adapt_parameters(symbol, timeframe, limit, exchange_name)
+            await self.adapt_parameters(symbol, timeframe, limit, exchange_name)
             volatility = self.volatility_analyzer.analyze(klines)
-            current_price = klines[-1][4]  # Последняя цена закрытия
+            current_price = klines[-1][4]
 
             if volatility > self.volatility_threshold:
-                signal = "hold"  # Высокая волатильность — ждём
+                signal = "hold"
             else:
-                # Простая логика: покупаем, если волатильность низкая
                 signal = "buy"
 
             logger.info(f"Generated volatility signal for {symbol}: {signal}, volatility={volatility}")

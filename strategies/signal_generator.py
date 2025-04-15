@@ -8,11 +8,11 @@ class SignalGenerator:
         self.market_data = market_data
         self.volatility_analyzer = volatility_analyzer
 
-    def generate(self, symbol, klines, timeframe, limit, exchange_name):
+    async def generate(self, symbol, klines, timeframe, limit, exchange_name):
         """Generate a signal based on volatility and price movement."""
         try:
             volatility = self.volatility_analyzer.analyze(klines)
-            closes = [kline[4] for kline in klines][-2:]  # Последние две цены
+            closes = [kline[4] for kline in klines][-2:]
             if len(closes) < 2:
                 logger.warning(f"Not enough data for {symbol}")
                 return None

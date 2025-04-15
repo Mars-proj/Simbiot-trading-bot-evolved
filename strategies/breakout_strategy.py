@@ -8,28 +8,28 @@ class BreakoutStrategy:
         self.market_data = market_data
         self.volatility_analyzer = volatility_analyzer
         self.lookback_period = 20
-        self.breakout_threshold = 0.03  # 3% по умолчанию
+        self.breakout_threshold = 0.03
 
-    def adapt_parameters(self, symbol, timeframe, limit, exchange_name):
+    async def adapt_parameters(self, symbol, timeframe, limit, exchange_name):
         """Adapt breakout threshold based on volatility."""
         try:
-            klines = self.market_data.get_klines(symbol, timeframe, limit, exchange_name)
+            klines = await self.market_data.get_klines(symbol, timeframe, limit, exchange_name)
             if not klines:
                 logger.warning(f"No klines for {symbol}, using default breakout threshold")
                 return
             volatility_factor = self.volatility_analyzer.analyze(klines)
-            self.breakout_threshold = 0.03 * (1 + volatility_factor)  # Увеличиваем порог при высокой волатильности
+            self.breakout_threshold = 0.03 * (1 + volatility_factor)
             logger.info(f"Adapted breakout threshold for {symbol}: {self.breakout_threshold}")
         except Exception as e:
             logger.error(f"Failed to adapt parameters for {symbol}: {str(e)}")
 
-    def generate_signal(self, symbol, klines, timeframe, limit, exchange_name):
+    async def generate_signal(self, symbol, klines, timeframe, limit, exchange_name):
         """Generate a breakout signal."""
         try:
-            self.adapt_parameters(symbol, timeframe, limit, exchange_name)
-            highs = [kline[2] for kline in klines][-self.lookback_period:]  # Максимумы
-            lows = [kline[3] for kline in klines][-self.lookback_period:]  # Минимумы
-            current_price = klines[-1][4]  # Последняя цена закрытия
+            await self.adapt_parameters(symbol, timeframe, limit, exchange_name)
+            highs = [kline[2] for kline in klines][-self.lookback_period:]
+            lows = [kline[3] for kline in klines][-self.lookback_period:]
+            current_price = klines[-1][4]
 
             if len(highs) < self.lookback_period:
                 logger.warning(f"Not enough data for {symbol}")

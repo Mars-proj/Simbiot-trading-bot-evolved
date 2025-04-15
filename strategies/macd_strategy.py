@@ -14,14 +14,13 @@ class MACDStrategy:
         self.base_fast_period = fast_period
         self.base_slow_period = slow_period
 
-    def adapt_parameters(self, symbol, timeframe, limit, exchange_name):
+    async def adapt_parameters(self, symbol, timeframe, limit, exchange_name):
         """Adapt MACD periods based on market volatility."""
         try:
-            klines = self.market_data.get_klines(symbol, timeframe, limit, exchange_name)
+            klines = await self.market_data.get_klines(symbol, timeframe, limit, exchange_name)
             if not klines:
                 logger.warning(f"No klines for {symbol}, using default MACD periods")
                 return
-            # Пример адаптации: увеличиваем периоды при высокой волатильности
             volatility_factor = self.volatility_analyzer.analyze(klines)
             self.fast_period = int(self.base_fast_period * (1 + volatility_factor))
             self.slow_period = int(self.base_slow_period * (1 + volatility_factor))
@@ -30,18 +29,17 @@ class MACDStrategy:
             logger.error(f"Failed to adapt parameters for {symbol}: {str(e)}")
 
     def calculate_ema(self, closes, period):
-        """Calculate Exponential Moving Average."""
         ema = [closes[0]]
         k = 2 / (period + 1)
         for price in closes[1:]:
             ema.append(price * k + ema[-1] * (1 - k))
         return ema
 
-    def generate_signal(self, symbol, klines, timeframe, limit, exchange_name):
+    async def generate_signal(self, symbol, klines, timeframe, limit, exchange_name):
         """Generate a signal using MACD."""
         try:
-            self.adapt_parameters(symbol, timeframe, limit, exchange_name)
-            closes = [kline[4] for kline in klines][-self.slow_period*2:]  # Берем больше данных
+            await self.adapt_parameters(symbol, timeframe, limit, exchange_name)
+            closes = [kline[4] for kline in klines][-self.slow_period*2:]
             if len(closes) < self.slow_period:
                 logger.warning(f"Not enough data for {symbol}")
                 return None

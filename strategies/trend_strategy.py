@@ -10,30 +10,30 @@ class TrendStrategy:
         self.volatility_analyzer = volatility_analyzer
         self.lookback_period = 50
 
-    def adapt_parameters(self, symbol, timeframe, limit, exchange_name):
+    async def adapt_parameters(self, symbol, timeframe, limit, exchange_name):
         """Adapt lookback period based on volatility."""
         try:
-            klines = self.market_data.get_klines(symbol, timeframe, limit, exchange_name)
+            klines = await self.market_data.get_klines(symbol, timeframe, limit, exchange_name)
             if not klines:
                 logger.warning(f"No klines for {symbol}, using default lookback period")
                 return
             volatility_factor = self.volatility_analyzer.analyze(klines)
-            self.lookback_period = int(50 * (1 + volatility_factor))  # Увеличиваем период при высокой волатильности
+            self.lookback_period = int(50 * (1 + volatility_factor))
             logger.info(f"Adapted lookback period for {symbol}: {self.lookback_period}")
         except Exception as e:
             logger.error(f"Failed to adapt parameters for {symbol}: {str(e)}")
 
-    def generate_signal(self, symbol, klines, timeframe, limit, exchange_name):
+    async def generate_signal(self, symbol, klines, timeframe, limit, exchange_name):
         """Generate a trend-following signal."""
         try:
-            self.adapt_parameters(symbol, timeframe, limit, exchange_name)
+            await self.adapt_parameters(symbol, timeframe, limit, exchange_name)
             closes = [kline[4] for kline in klines][-self.lookback_period:]
             if len(closes) < self.lookback_period:
                 logger.warning(f"Not enough data for {symbol}")
                 return None
 
-            short_ma = np.mean(closes[-10:])  # Короткая скользящая средняя
-            long_ma = np.mean(closes)  # Длинная скользящая средняя
+            short_ma = np.mean(closes[-10:])
+            long_ma = np.mean(closes)
             if short_ma > long_ma:
                 signal = "buy"
             elif short_ma < long_ma:

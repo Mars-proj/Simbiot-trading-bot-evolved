@@ -15,14 +15,13 @@ class RSIStrategy:
         self.oversold = oversold
         self.adx_threshold = adx_threshold
 
-    def adapt_parameters(self, symbol, timeframe, limit, exchange_name):
+    async def adapt_parameters(self, symbol, timeframe, limit, exchange_name):
         """Adapt RSI thresholds based on market volatility."""
         try:
-            klines = self.market_data.get_klines(symbol, timeframe, limit, exchange_name)
+            klines = await self.market_data.get_klines(symbol, timeframe, limit, exchange_name)
             if not klines:
                 logger.warning(f"No klines for {symbol}, using default RSI thresholds")
                 return
-            # Пример адаптации: увеличиваем пороги при высокой волатильности
             volatility_factor = self.volatility_analyzer.analyze(klines)
             self.overbought = self.base_overbought + 5 * volatility_factor
             self.oversold = self.base_oversold - 5 * volatility_factor
@@ -43,7 +42,6 @@ class RSIStrategy:
         return 100 - (100 / (1 + rs))
 
     def calculate_adx(self, klines):
-        """Simplified ADX calculation."""
         highs = [kline[2] for kline in klines][-self.period:]
         lows = [kline[3] for kline in klines][-self.period:]
         if len(highs) < self.period:
@@ -51,11 +49,11 @@ class RSIStrategy:
         tr = [max(highs[i] - lows[i], abs(highs[i] - closes[i-1]), abs(lows[i] - closes[i-1])) for i in range(1, len(highs))]
         return np.mean(tr) if tr else 0
 
-    def generate_signal(self, symbol, klines, timeframe, limit, exchange_name):
+    async def generate_signal(self, symbol, klines, timeframe, limit, exchange_name):
         """Generate a signal using RSI."""
         try:
-            self.adapt_parameters(symbol, timeframe, limit, exchange_name)
-            closes = [kline[4] for kline in klines][-self.period*2:]  # Берем больше данных для расчёта
+            await self.adapt_parameters(symbol, timeframe, limit, exchange_name)
+            closes = [kline[4] for kline in klines][-self.period*2:]
             if len(closes) < self.period:
                 logger.warning(f"Not enough data for {symbol}")
                 return None

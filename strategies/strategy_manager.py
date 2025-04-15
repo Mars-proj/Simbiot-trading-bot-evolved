@@ -35,12 +35,12 @@ class StrategyManager:
             SignalGenerator(market_state, market_data, volatility_analyzer)
         ]
 
-    def generate_signals(self, symbol, klines, prediction):
-        """Generate signals from all strategies."""
+    async def generate_signals(self, symbol, klines, prediction):
+        """Generate signals from all strategies asynchronously."""
         try:
             signals = []
             for strategy in self.strategies:
-                signal = strategy.generate_signal(symbol, klines, "1m", 200, "mexc")
+                signal = await strategy.generate_signal(symbol, klines, "1m", 200, "mexc")
                 if signal:
                     signals.append(signal)
             logger.info(f"Generated signals for {symbol}: {signals}")

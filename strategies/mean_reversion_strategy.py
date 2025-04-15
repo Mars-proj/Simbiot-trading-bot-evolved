@@ -11,23 +11,23 @@ class MeanReversionStrategy:
         self.lookback_period = 20
         self.z_score_threshold = 2
 
-    def adapt_parameters(self, symbol, timeframe, limit, exchange_name):
+    async def adapt_parameters(self, symbol, timeframe, limit, exchange_name):
         """Adapt z-score threshold based on volatility."""
         try:
-            klines = self.market_data.get_klines(symbol, timeframe, limit, exchange_name)
+            klines = await self.market_data.get_klines(symbol, timeframe, limit, exchange_name)
             if not klines:
                 logger.warning(f"No klines for {symbol}, using default z-score threshold")
                 return
             volatility_factor = self.volatility_analyzer.analyze(klines)
-            self.z_score_threshold = 2 + volatility_factor  # Увеличиваем порог при высокой волатильности
+            self.z_score_threshold = 2 + volatility_factor
             logger.info(f"Adapted z-score threshold for {symbol}: {self.z_score_threshold}")
         except Exception as e:
             logger.error(f"Failed to adapt parameters for {symbol}: {str(e)}")
 
-    def generate_signal(self, symbol, klines, timeframe, limit, exchange_name):
+    async def generate_signal(self, symbol, klines, timeframe, limit, exchange_name):
         """Generate a mean reversion signal."""
         try:
-            self.adapt_parameters(symbol, timeframe, limit, exchange_name)
+            await self.adapt_parameters(symbol, timeframe, limit, exchange_name)
             closes = [kline[4] for kline in klines][-self.lookback_period:]
             if len(closes) < self.lookback_period:
                 logger.warning(f"Not enough data for {symbol}")
