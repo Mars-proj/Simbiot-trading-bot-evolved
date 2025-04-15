@@ -1,5 +1,7 @@
-import sys
 import os
+os.environ["CUDA_VISIBLE_DEVICES"] = "-1"  # Отключаем GPU до импорта TensorFlow
+
+import sys
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 import asyncio
