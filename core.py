@@ -22,7 +22,7 @@ logger = setup_logging('core')
 class TradingBotCore:
     def __init__(self):
         logger.info("Starting initialization of TradingBotCore")
-        self.exchanges = ["mexc", "binance"]  # Добавляем Binance
+        self.exchanges = ["mexc", "binance"]
         self.timeframe = "1h"
         self.limit = 200
         self.iteration_interval = 60
@@ -107,7 +107,7 @@ class TradingBotCore:
                     for symbol_batch in self.batch_symbols(symbols):
                         tasks = []
                         for symbol in symbol_batch:
-                            tasks.append(fetch_klines(exchange_name, symbol, self.timeframe, self.limit))
+                            tasks.append(self.market_data.fetch_klines_with_semaphore(symbol, self.timeframe, self.limit, exchange_name))
                         klines_results = await asyncio.gather(*tasks)
 
                         for symbol, klines in zip(symbol_batch, klines_results):

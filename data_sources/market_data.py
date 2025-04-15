@@ -2,6 +2,7 @@ import asyncio
 import ccxt.async_support as ccxt
 from utils.logging_setup import setup_logging
 import os
+from asyncio import Semaphore
 
 class AsyncMarketData:
     _instance = None
@@ -12,6 +13,7 @@ class AsyncMarketData:
             cls._instance.exchanges = {}
             cls._instance.symbol_cache = {}
             cls._instance.logger = setup_logging('market_data')
+            cls._instance.semaphore = Semaphore(10)  # Лимит на 10 одновременных запросов
         return cls._instance
 
     async def initialize_exchange(self, exchange_name):
@@ -41,6 +43,11 @@ class AsyncMarketData:
         except Exception as e:
             self.logger.error(f"Failed to initialize {exchange_name} (async): {str(e)}")
             raise
+
+    async def fetch_klines_with_semaphore(self, symbol, timeframe, limit, exchange_name):
+        """Fetch klines with semaphore to limit concurrent requests."""
+        async with self.semaphore:
+            return await self.get_klines(symbol, timeframe, limit, exchange_name)
 
     async def get_klines(self, symbol, timeframe, limit, exchange_name):
         """Fetch klines asynchronously."""
