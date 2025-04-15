@@ -18,22 +18,49 @@ logger = setup_logging('core')
 
 class TradingBotCore:
     def __init__(self):
+        logger.info("Starting initialization of TradingBotCore")
         self.exchange_name = "mexc"
         self.timeframe = "1h"
         self.limit = 200
         self.iteration_interval = 60
+        logger.info("Basic attributes initialized")
+
         self.mexc_api = MEXCAPI()
+        logger.info("MEXCAPI initialized")
+
         self.market_data = AsyncMarketData()
-        self.market_state = {}  # Пустой словарь для состояния рынка
+        logger.info("AsyncMarketData initialized")
+
+        self.market_state = {}
+        logger.info("Market state initialized")
+
         self.symbol_filter = SymbolFilter(self.market_data, self.market_state)
+        logger.info("SymbolFilter initialized")
+
         self.volatility_analyzer = VolatilityAnalyzer(self.market_state, self.market_data)
+        logger.info("VolatilityAnalyzer initialized")
+
         self.online_learning = OnlineLearning(self.market_state, self.market_data)
+        logger.info("OnlineLearning initialized")
+
         self.strategy_manager = StrategyManager(self.market_state, self.market_data, self.volatility_analyzer, self.online_learning)
+        logger.info("StrategyManager initialized")
+
         self.risk_manager = RiskManager(self.volatility_analyzer)
+        logger.info("RiskManager initialized")
+
         self.position_manager = PositionManager()
+        logger.info("PositionManager initialized")
+
         self.order_manager = OrderManager()
+        logger.info("OrderManager initialized")
+
         self.risk_calculator = RiskCalculator(self.volatility_analyzer)
+        logger.info("RiskCalculator initialized")
+
         self.trade_executor = TradeExecutor(self.exchange_name)
+        logger.info("TradeExecutor initialized")
+        logger.info("Finished initialization of TradingBotCore")
 
     def get_symbols(self):
         return self.mexc_api.fetch_symbols()

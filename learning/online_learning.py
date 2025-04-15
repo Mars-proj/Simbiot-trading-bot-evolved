@@ -16,17 +16,22 @@ logger = setup_logging('online_learning')
 class OnlineLearning:
     def __init__(self, market_state, market_data):
         """Initialize the Online Learning module."""
+        logger.info("Starting initialization of OnlineLearning")
         self.market_state = market_state
         self.market_data = market_data
-        self.models = {
-            'xgboost': LocalModelAPI(),
-            'transformer': TransformerModel(),
-            'lstm': LSTMModel(),
-            'rnn': RNNModel()
-        }
+        self.models = {}
+        self.models['xgboost'] = LocalModelAPI()
+        logger.info("XGBoost model initialized")
+        self.models['transformer'] = TransformerModel()
+        logger.info("Transformer model initialized")
+        self.models['lstm'] = LSTMModel()
+        logger.info("LSTM model initialized")
+        self.models['rnn'] = RNNModel()
+        logger.info("RNN model initialized")
         self.performance_metrics = {}  # Track performance of each model
         self.retrain_interval = 300  # Retrain every 5 minutes
         self.last_retrain = {}
+        logger.info("Finished initialization of OnlineLearning")
 
     async def retrain(self, symbol: str, timeframe: str, limit: int, exchange_name: str):
         """Retrain all models for a symbol asynchronously."""
