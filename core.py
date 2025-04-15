@@ -68,7 +68,7 @@ class TradingBotCore:
 
                         prediction = await self.online_learning.predict(symbol, self.timeframe, self.limit, self.exchange_name)
                         if prediction is not None:
-                            signals = self.strategy_manager.generate_signals(symbol, klines, prediction)
+                            signals = await self.strategy_manager.generate_signals(symbol, klines, prediction)
                             if signals:
                                 for signal in signals:
                                     await self.execute_trade(signal)
