@@ -1,6 +1,7 @@
 import asyncio
 import ccxt.async_support as ccxt
 from utils.logging_setup import setup_logging
+import os
 
 class AsyncMarketData:
     _instance = None
@@ -18,9 +19,22 @@ class AsyncMarketData:
         try:
             if exchange_name not in self.exchanges:
                 exchange_class = getattr(ccxt, exchange_name)
-                self.exchanges[exchange_name] = exchange_class({
-                    'enableRateLimit': True,
-                })
+                if exchange_name == "mexc":
+                    self.exchanges[exchange_name] = exchange_class({
+                        'enableRateLimit': True,
+                        'apiKey': os.getenv('MEXC_API_KEY'),
+                        'secret': os.getenv('MEXC_API_SECRET'),
+                    })
+                elif exchange_name == "binance":
+                    self.exchanges[exchange_name] = exchange_class({
+                        'enableRateLimit': True,
+                        'apiKey': os.getenv('BINANCE_API_KEY'),
+                        'secret': os.getenv('BINANCE_API_SECRET'),
+                    })
+                else:
+                    self.exchanges[exchange_name] = exchange_class({
+                        'enableRateLimit': True,
+                    })
                 markets = await self.exchanges[exchange_name].load_markets()
                 self.symbol_cache[exchange_name] = set(markets.keys())
             self.logger.info(f"Successfully initialized {exchange_name} (async)")

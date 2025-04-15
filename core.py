@@ -22,7 +22,7 @@ logger = setup_logging('core')
 class TradingBotCore:
     def __init__(self):
         logger.info("Starting initialization of TradingBotCore")
-        self.exchanges = ["mexc"]
+        self.exchanges = ["mexc", "binance"]  # Добавляем Binance
         self.timeframe = "1h"
         self.limit = 200
         self.iteration_interval = 60
@@ -37,10 +37,9 @@ class TradingBotCore:
         self.news_analyzer = NewsAnalyzer()
         logger.info("NewsAnalyzer initialized")
 
-        # Инициализация TelegramNotifier
         self.telegram_notifier = TelegramNotifier(
-            bot_token="your_bot_token",  # Замени на свой токен Telegram-бота
-            chat_id="your_chat_id"       # Замени на свой chat_id
+            bot_token="your_bot_token",
+            chat_id="your_chat_id"
         )
         logger.info("TelegramNotifier initialized")
 
@@ -92,14 +91,13 @@ class TradingBotCore:
         while True:
             try:
                 for exchange_name in self.exchanges:
-                    # Проверяем новости перед итерацией
                     articles = self.news_analyzer.fetch_news()
                     critical_news = self.news_analyzer.analyze_news(articles)
                     if self.news_analyzer.should_pause_trading(critical_news):
                         message = "Pausing trading due to critical news: " + ", ".join([news['title'] for news in critical_news])
                         logger.warning(message)
                         self.telegram_notifier.send_message(message)
-                        await asyncio.sleep(3600)  # Пауза на 1 час
+                        await asyncio.sleep(3600)
                         continue
 
                     logger.info(f"Starting trading iteration on {exchange_name}")
