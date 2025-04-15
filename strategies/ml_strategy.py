@@ -9,10 +9,10 @@ class MLStrategy:
         self.volatility_analyzer = volatility_analyzer
         self.model = model
 
-    def generate_signal(self, symbol, klines, timeframe, limit, exchange_name):
+    async def generate_signal(self, symbol, klines, timeframe, limit, exchange_name):
         """Generate a signal using ML model."""
         try:
-            prediction = self.model.predict(symbol, timeframe, limit, exchange_name)
+            prediction = await self.model.predict(symbol, timeframe, limit, exchange_name)
             if prediction is None:
                 logger.warning(f"No prediction for {symbol}")
                 return None
