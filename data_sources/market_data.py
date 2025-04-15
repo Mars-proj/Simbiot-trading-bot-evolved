@@ -20,29 +20,40 @@ class AsyncMarketData:
         """Initialize an exchange asynchronously."""
         try:
             if exchange_name not in self.exchanges:
-                exchange_class = getattr(ccxt, exchange_name)
-                if exchange_name == "mexc":
+                exchange_class = getattr(ccxt, exchange_name, None)
+                if exchange_class is None:
+                    self.logger.warning(f"Exchange {exchange_name} is not supported by ccxt.async_support, skipping")
+                    return False
+
+                # Проверяем наличие API-ключей для биржи
+                api_key = os.getenv(f"{exchange_name.upper()}_API_KEY")
+                api_secret = os.getenv(f"{exchange_name.upper()}_API_SECRET")
+                if api_key and api_secret:
                     self.exchanges[exchange_name] = exchange_class({
                         'enableRateLimit': True,
-                        'apiKey': os.getenv('MEXC_API_KEY'),
-                        'secret': os.getenv('MEXC_API_SECRET'),
+                        'apiKey': api_key,
+                        'secret': api_secret,
                     })
-                elif exchange_name == "binance":
-                    self.exchanges[exchange_name] = exchange_class({
-                        'enableRateLimit': True,
-                        'apiKey': os.getenv('BINANCE_API_KEY'),
-                        'secret': os.getenv('BINANCE_API_SECRET'),
-                    })
+                    self.logger.info(f"Initialized {exchange_name} with API keys")
                 else:
                     self.exchanges[exchange_name] = exchange_class({
                         'enableRateLimit': True,
                     })
-                markets = await self.exchanges[exchange_name].load_markets()
-                self.symbol_cache[exchange_name] = set(markets.keys())
-            self.logger.info(f"Successfully initialized {exchange_name} (async)")
+                    self.logger.info(f"Initialized {exchange_name} without API keys (public access only)")
+
+                try:
+                    markets = await self.exchanges[exchange_name].load_markets()
+                    self.symbol_cache[exchange_name] = set(markets.keys())
+                    self.logger.info(f"Successfully initialized {exchange_name} (async) with {len(markets)} markets")
+                    return True
+                except Exception as e:
+                    self.logger.error(f"Failed to load markets for {exchange_name}: {str(e)}")
+                    self.exchanges.pop(exchange_name, None)
+                    return False
+            return True
         except Exception as e:
             self.logger.error(f"Failed to initialize {exchange_name} (async): {str(e)}")
-            raise
+            return False
 
     async def fetch_klines_with_semaphore(self, symbol, timeframe, limit, exchange_name):
         """Fetch klines with semaphore to limit concurrent requests."""
@@ -53,7 +64,10 @@ class AsyncMarketData:
         """Fetch klines asynchronously."""
         try:
             if exchange_name not in self.exchanges:
-                await self.initialize_exchange(exchange_name)
+                success = await self.initialize_exchange(exchange_name)
+                if not success:
+                    self.logger.warning(f"Skipping {exchange_name} as it could not be initialized")
+                    return None
 
             symbol = symbol.split(':')[0]
 
