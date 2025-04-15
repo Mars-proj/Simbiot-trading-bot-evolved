@@ -2,38 +2,39 @@ import logging
 import os
 from datetime import datetime
 
-def setup_logging(name: str) -> logging.Logger:
-    """Set up logging with a specified name."""
+# Словарь для хранения логгеров
+_loggers = {}
+
+def setup_logging(name):
+    """Set up a logger with the given name."""
+    if name in _loggers:
+        return _loggers[name]
+
     logger = logging.getLogger(name)
     logger.setLevel(logging.INFO)
 
-    # Создаём директорию для логов, если её нет
+    # Создаём обработчик для файла
     log_dir = "logs"
     if not os.path.exists(log_dir):
         os.makedirs(log_dir)
-
-    # Формат имени файла лога: logs/name_YYYY-MM-DD.log
-    log_filename = os.path.join(log_dir, f"{name}_{datetime.now().strftime('%Y-%m-%d')}.log")
-    
-    # Настраиваем обработчик для файла
-    file_handler = logging.FileHandler(log_filename)
+    log_file = os.path.join(log_dir, f"{name}_{datetime.now().strftime('%Y-%m-%d')}.log")
+    file_handler = logging.FileHandler(log_file)
     file_handler.setLevel(logging.INFO)
-    file_formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-    file_handler.setFormatter(file_formatter)
-    
-    # Настраиваем обработчик для консоли
-    console_handler = logging.StreamHandler()
-    console_handler.setLevel(logging.INFO)
-    console_formatter = logging.Formatter('%(levelname)s:%(name)s:%(message)s')
-    console_handler.setFormatter(console_formatter)
-    
-    # Добавляем обработчики к логгеру
+
+    # Создаём форматтер
+    formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+    file_handler.setFormatter(formatter)
+
+    # Добавляем обработчик к логгеру
     logger.addHandler(file_handler)
-    logger.addHandler(console_handler)
-    
+
+    _loggers[name] = logger
     return logger
 
-if __name__ == "__main__":
-    # Test run
-    logger = setup_logging('test')
-    logger.info("This is a test log message")
+def close_loggers():
+    """Close all loggers and their handlers."""
+    for name, logger in _loggers.items():
+        for handler in logger.handlers[:]:
+            handler.close()
+            logger.removeHandler(handler)
+    _loggers.clear()

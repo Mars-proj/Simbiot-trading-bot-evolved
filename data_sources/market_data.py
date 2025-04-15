@@ -2,13 +2,16 @@ import asyncio
 import ccxt.async_support as ccxt
 from utils.logging_setup import setup_logging
 
-logger = setup_logging('market_data')
-
 class AsyncMarketData:
-    def __init__(self):
-        self.exchanges = {}
-        self.symbol_cache = {}
-        self.logger = setup_logging('market_data')
+    _instance = None
+
+    def __new__(cls):
+        if cls._instance is None:
+            cls._instance = super(AsyncMarketData, cls).__new__(cls)
+            cls._instance.exchanges = {}
+            cls._instance.symbol_cache = {}
+            cls._instance.logger = setup_logging('market_data')
+        return cls._instance
 
     async def initialize_exchange(self, exchange_name):
         """Initialize an exchange asynchronously."""
@@ -18,7 +21,6 @@ class AsyncMarketData:
                 self.exchanges[exchange_name] = exchange_class({
                     'enableRateLimit': True,
                 })
-                # Загружаем информацию о символах
                 markets = await self.exchanges[exchange_name].load_markets()
                 self.symbol_cache[exchange_name] = set(markets.keys())
             self.logger.info(f"Successfully initialized {exchange_name} (async)")
@@ -32,10 +34,8 @@ class AsyncMarketData:
             if exchange_name not in self.exchanges:
                 await self.initialize_exchange(exchange_name)
 
-            # Исправляем формат символа, убираем лишние части
             symbol = symbol.split(':')[0]
 
-            # Проверяем, существует ли символ
             if symbol not in self.symbol_cache.get(exchange_name, set()):
                 self.logger.warning(f"Symbol {symbol} not found on {exchange_name}, skipping")
                 return None
