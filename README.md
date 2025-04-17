@@ -10,3 +10,15 @@ Simbiot Trading Bot Simbiot Trading Bot is an advanced, self-learning, and self-
 - **Database**: PostgreSQL 14 (database: `simbiot_trading`, user: `simbiot_user`)
 - **Cache**: Redis
 - **Status**: Ready for module development (e.g., `deal_pool`, `feature_engineering.py`)
+## Installation Status
+- **Environment**: Ubuntu 22.04 LTS, Python 3.10.12
+- **GPU**: NVIDIA Tesla T4, driver 535.230.02, CUDA 12.2, cuDNN 8.9.2.26
+- **Libraries**: Installed successfully (see `requirements.txt`)
+  - `vectorbt==0.27.2`
+  - `tensorflow==2.17.0` (GPU-enabled)
+  - `torch==2.3.1` (CUDA-enabled)
+  - Full list in `requirements.txt`
+- **Database**: PostgreSQL 14 (database: `simbiot_trading`, user: `simbiot_user`)
+- **Cache**: Redis (active)
+- **Status**: Ready for module development (e.g., `deal_pool`, `feature_engineering.py`)
+- **Notes**: TensorFlow warnings (`cuFFT`, `cuDNN`, `cuBLAS`) are non-critical and related to library registration.
